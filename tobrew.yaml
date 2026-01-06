@@ -1,0 +1,24 @@
+name: git-subclone
+language: go
+description: Manage nested git repositories with dual tracking - files in both mother and sub repos
+homepage: https://github.com/yejune/git-subclone
+license: MIT
+github:
+    user: yejune
+    repo: git-subclone
+    tap_repo: homebrew-tap
+build:
+    command: go build -o build/{{.Name}} ./cmd/git-subclone
+formula:
+    install: |-
+        system "go", "build", "-o", "git-subclone", "./cmd/git-subclone"
+        bin.install "git-subclone"
+    test: assert_match "version", shell_output("#{bin}/git-subclone --version")
+    caveats: |-
+        git-subclone has been installed!
+
+        Usage:
+          git subclone add <repo> <path>   Add a subclone
+          git subclone sync                Sync all subclones
+          git subclone list                List subclones
+          git subclone push [path]         Push subclone(s)
