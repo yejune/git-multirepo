@@ -126,27 +126,29 @@ func extractRepoName(url string) string {
 	// Remove trailing .git
 	url = strings.TrimSuffix(url, ".git")
 
-	// Get last path component
-	parts := strings.Split(url, "/")
-	name := parts[len(parts)-1]
-
-	// Handle git@host:user/repo format
-	if strings.Contains(name, ":") {
-		parts = strings.Split(name, ":")
-		name = parts[len(parts)-1]
-		// If still has /, get last part
-		if strings.Contains(name, "/") {
-			parts = strings.Split(name, "/")
-			name = parts[len(parts)-1]
-		}
+	// Handle SSH format first: git@host:path/to/repo
+	// The colon separates host from path, so we need to extract path first
+	if strings.Contains(url, ":") && !strings.Contains(url, "://") {
+		// Split by colon to get the path part
+		parts := strings.Split(url, ":")
+		pathPart := parts[len(parts)-1]
+		// Now extract the last component from the path
+		pathParts := strings.Split(pathPart, "/")
+		return pathParts[len(pathParts)-1]
 	}
 
-	return name
+	// Handle HTTPS or local path format: just get last component after /
+	parts := strings.Split(url, "/")
+	return parts[len(parts)-1]
 }
 
+// osExit is a variable that can be overridden in tests
+var osExit = os.Exit
+
+// Execute runs the root command and exits with code 1 on error
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		osExit(1)
 	}
 }

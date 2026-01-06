@@ -75,9 +75,8 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	}
 
 	// Remove from manifest
-	if !m.Remove(path) {
-		return fmt.Errorf("failed to remove from manifest")
-	}
+	// Note: m.Remove always succeeds if m.Exists returned true
+	m.Remove(path)
 
 	if err := manifest.Save(repoRoot, m); err != nil {
 		return fmt.Errorf("failed to save manifest: %w", err)

@@ -2456,19 +2456,29 @@ func TestListDirHasChangesReturnsError(t *testing.T) {
 	os.RemoveAll(filepath.Join(subPath, ".git", "objects"))
 	os.RemoveAll(filepath.Join(subPath, ".git", "refs"))
 
+	// Also remove parent .git to prevent git from finding it
+	// This forces git to fail in the subclone
+	parentGit := filepath.Join(dir, ".git")
+	parentGitBackup := filepath.Join(dir, ".git_backup")
+	os.Rename(parentGit, parentGitBackup)
+	defer os.Rename(parentGitBackup, parentGit)
+
 	t.Run("listDir shows error status", func(t *testing.T) {
 		listRecursive = false
 
+		// Need to call listDir directly since runList requires git repo root
 		output := captureOutput(func() {
-			runList(listCmd, []string{})
+			listDir(dir, false, 0)
 		})
 
-		// Should show path
+		// Should show path with error status
 		if !strings.Contains(output, "packages/error-status") {
 			t.Errorf("output should show path, got: %s", output)
 		}
-		// The status should be "error" or "not cloned" depending on how git behaves
-		t.Logf("output: %s", output)
+		// Should show error icon (✗)
+		if !strings.Contains(output, "✗") {
+			t.Errorf("output should show error icon (✗), got: %s", output)
+		}
 	})
 }
 
