@@ -8,10 +8,11 @@ github:
     repo: git-subclone
     tap_repo: homebrew-tap
 build:
-    command: go build -o build/{{.Name}} .
+    command: go build -ldflags "-X github.com/yejune/git-subclone/cmd.Version={{.Version}}" -o build/{{.Name}} .
 formula:
     install: |-
-        system "go", "build", "-o", "git-subclone", "."
+        ldflags = "-X github.com/yejune/git-subclone/cmd.Version=#{version}"
+        system "go", "build", "-ldflags", ldflags, "-o", "git-subclone", "."
         bin.install "git-subclone"
     test: assert_match "version", shell_output("#{bin}/git-subclone --version")
     caveats: |-
