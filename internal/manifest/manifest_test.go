@@ -17,6 +17,48 @@ func TestLoadEmpty(t *testing.T) {
 	}
 }
 
+func TestLoadReadError(t *testing.T) {
+	dir := t.TempDir()
+	// Create .subclones.yaml as a directory - ReadFile will fail with non-NotExist error
+	manifestPath := filepath.Join(dir, FileName)
+	os.MkdirAll(manifestPath, 0755)
+
+	_, err := Load(dir)
+	if err == nil {
+		t.Error("Load should fail when manifest path is a directory")
+	}
+}
+
+func TestLoadInvalidYAML(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, FileName)
+	// Write invalid YAML content
+	os.WriteFile(manifestPath, []byte("subclones: [invalid yaml\n  - broken"), 0644)
+
+	_, err := Load(dir)
+	if err == nil {
+		t.Error("Load should fail when YAML is invalid")
+	}
+}
+
+func TestLoadNilSubclones(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, FileName)
+	// Write YAML without subclones field (will be nil)
+	os.WriteFile(manifestPath, []byte("# empty manifest\n"), 0644)
+
+	m, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if m.Subclones == nil {
+		t.Error("Subclones should be initialized to empty slice, not nil")
+	}
+	if len(m.Subclones) != 0 {
+		t.Errorf("expected 0 subclones, got %d", len(m.Subclones))
+	}
+}
+
 func TestSaveAndLoad(t *testing.T) {
 	dir := t.TempDir()
 
@@ -100,5 +142,35 @@ func TestFind(t *testing.T) {
 
 	if m.Find("nonexistent") != nil {
 		t.Error("expected nil for nonexistent path")
+	}
+}
+
+func TestSaveWriteError(t *testing.T) {
+	dir := t.TempDir()
+	// Create .subclones.yaml as a directory to prevent WriteFile
+	manifestPath := filepath.Join(dir, FileName)
+	os.MkdirAll(manifestPath, 0755)
+
+	m := &Manifest{Subclones: []Subclone{{Path: "test", Repo: "repo"}}}
+	err := Save(dir, m)
+	if err == nil {
+		t.Error("Save should fail when manifest path is a directory")
+	}
+}
+
+func TestSaveMarshalError(t *testing.T) {
+	dir := t.TempDir()
+
+	// Replace marshalFunc with one that always fails
+	originalMarshal := marshalFunc
+	marshalFunc = func(v interface{}) ([]byte, error) {
+		return nil, os.ErrInvalid
+	}
+	defer func() { marshalFunc = originalMarshal }()
+
+	m := &Manifest{Subclones: []Subclone{{Path: "test", Repo: "repo"}}}
+	err := Save(dir, m)
+	if err == nil {
+		t.Error("Save should fail when marshal fails")
 	}
 }

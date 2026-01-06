@@ -430,3 +430,170 @@ func TestPush(t *testing.T) {
 		}
 	})
 }
+
+// Additional tests for 100% coverage
+
+func TestAddToGitignore_ErrorCases(t *testing.T) {
+	t.Run("read error on unreadable file", func(t *testing.T) {
+		dir := t.TempDir()
+		gitignore := filepath.Join(dir, ".gitignore")
+
+		// Create a directory with same name as .gitignore (causes read error)
+		if err := os.Mkdir(gitignore, 0755); err != nil {
+			t.Fatalf("failed to create directory: %v", err)
+		}
+
+		err := AddToGitignore(dir, "subdir")
+		if err == nil {
+			t.Error("should error when .gitignore is a directory")
+		}
+	})
+
+	t.Run("open error on readonly directory", func(t *testing.T) {
+		dir := t.TempDir()
+
+		// Make directory readonly to prevent file creation
+		if err := os.Chmod(dir, 0555); err != nil {
+			t.Skipf("cannot change directory permissions: %v", err)
+		}
+		defer os.Chmod(dir, 0755)
+
+		err := AddToGitignore(dir, "subdir")
+		if err == nil {
+			t.Error("should error when cannot open file for writing")
+		}
+	})
+
+	t.Run("add newline when file doesn't end with one", func(t *testing.T) {
+		dir := t.TempDir()
+		gitignore := filepath.Join(dir, ".gitignore")
+
+		// Write content without trailing newline
+		if err := os.WriteFile(gitignore, []byte("node_modules/"), 0644); err != nil {
+			t.Fatalf("failed to create gitignore: %v", err)
+		}
+
+		err := AddToGitignore(dir, "subdir")
+		if err != nil {
+			t.Fatalf("AddToGitignore failed: %v", err)
+		}
+
+		content, _ := os.ReadFile(gitignore)
+		lines := strings.Split(string(content), "\n")
+
+		// Should have: "node_modules/", "subdir/.git/", ""
+		if len(lines) < 2 {
+			t.Errorf("expected at least 2 lines, got %d", len(lines))
+		}
+		if !strings.Contains(string(content), "node_modules/\nsubdir/.git/") {
+			t.Errorf("content should have proper newlines, got: %q", content)
+		}
+	})
+
+}
+
+func TestRemoveFromGitignore_ErrorCases(t *testing.T) {
+	t.Run("read error on unreadable file", func(t *testing.T) {
+		dir := t.TempDir()
+		gitignore := filepath.Join(dir, ".gitignore")
+
+		// Create a directory with same name as .gitignore (causes read error)
+		if err := os.Mkdir(gitignore, 0755); err != nil {
+			t.Fatalf("failed to create directory: %v", err)
+		}
+
+		err := RemoveFromGitignore(dir, "subdir")
+		if err == nil {
+			t.Error("should error when .gitignore is a directory")
+		}
+	})
+}
+
+func TestInitRepo_ErrorCases(t *testing.T) {
+	t.Run("init fails on non-existent path", func(t *testing.T) {
+		err := InitRepo("/non/existent/path", "https://example.com/repo.git", "main")
+		if err == nil {
+			t.Error("should error when path doesn't exist")
+		}
+	})
+
+	t.Run("remote add fails on invalid repo", func(t *testing.T) {
+		dir := t.TempDir()
+		// Create empty dir but make .git directory cause failure
+		repoDir := filepath.Join(dir, "repo")
+		os.MkdirAll(repoDir, 0755)
+
+		// First init succeeds, but if we manually create a bad state
+		// we can simulate remote add failure by using invalid characters
+		// Actually, git remote add doesn't fail on most inputs
+		// This test verifies the happy path covers remote add
+
+		// Test with existing remote (will fail on second add)
+		remoteDir := filepath.Join(dir, "remote.git")
+		exec.Command("git", "init", "--bare", remoteDir).Run()
+
+		// Init once
+		InitRepo(repoDir, remoteDir, "main")
+
+		// Second init with same remote should fail on remote add
+		err := InitRepo(repoDir, "https://other.com/repo.git", "main")
+		if err == nil {
+			t.Error("should error when remote already exists")
+		}
+	})
+
+	t.Run("fetch fails on unreachable remote", func(t *testing.T) {
+		dir := t.TempDir()
+		repoDir := filepath.Join(dir, "repo")
+		os.MkdirAll(repoDir, 0755)
+
+		// Use a clearly invalid remote URL that git fetch will fail on
+		err := InitRepo(repoDir, "file:///non/existent/remote", "main")
+		if err == nil {
+			t.Error("should error when fetch fails")
+		}
+	})
+}
+
+func TestHasChanges_ErrorCases(t *testing.T) {
+	t.Run("error on non-existent path", func(t *testing.T) {
+		_, err := HasChanges("/non/existent/path")
+		if err == nil {
+			t.Error("should error on non-existent path")
+		}
+	})
+
+	t.Run("error on non-git directory", func(t *testing.T) {
+		dir := t.TempDir()
+		_, err := HasChanges(dir)
+		if err == nil {
+			t.Error("should error on non-git directory")
+		}
+	})
+}
+
+func TestGetCurrentBranch_ErrorCases(t *testing.T) {
+	t.Run("error on non-existent path", func(t *testing.T) {
+		_, err := GetCurrentBranch("/non/existent/path")
+		if err == nil {
+			t.Error("should error on non-existent path")
+		}
+	})
+
+	t.Run("error on non-git directory", func(t *testing.T) {
+		dir := t.TempDir()
+		_, err := GetCurrentBranch(dir)
+		if err == nil {
+			t.Error("should error on non-git directory")
+		}
+	})
+
+	t.Run("error on repo without commits", func(t *testing.T) {
+		dir := setupTestRepo(t) // No commit yet
+
+		_, err := GetCurrentBranch(dir)
+		if err == nil {
+			t.Error("should error on repo without commits (HEAD not pointing to branch)")
+		}
+	})
+}

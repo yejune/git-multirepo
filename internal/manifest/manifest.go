@@ -10,6 +10,9 @@ import (
 
 const FileName = ".subclones.yaml"
 
+// marshalFunc is the function used to marshal YAML (allows testing)
+var marshalFunc = yaml.Marshal
+
 // Subclone represents a single subclone entry
 type Subclone struct {
 	Path   string `yaml:"path"`
@@ -48,7 +51,7 @@ func Load(dir string) (*Manifest, error) {
 // Save writes the manifest to the given directory
 func Save(dir string, m *Manifest) error {
 	path := filepath.Join(dir, FileName)
-	data, err := yaml.Marshal(m)
+	data, err := marshalFunc(m)
 	if err != nil {
 		return err
 	}

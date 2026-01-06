@@ -82,6 +82,15 @@ func AddToGitignore(repoRoot, path string) error {
 		}
 	}
 
+	// Build the string to append
+	var toWrite string
+	// Add newline if file doesn't end with one
+	if len(content) > 0 && content[len(content)-1] != '\n' {
+		toWrite = "\n" + entry + "\n"
+	} else {
+		toWrite = entry + "\n"
+	}
+
 	// Append new entry
 	f, err := os.OpenFile(gitignorePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -89,14 +98,7 @@ func AddToGitignore(repoRoot, path string) error {
 	}
 	defer f.Close()
 
-	// Add newline if file doesn't end with one
-	if len(content) > 0 && content[len(content)-1] != '\n' {
-		if _, err := f.WriteString("\n"); err != nil {
-			return err
-		}
-	}
-
-	_, err = f.WriteString(entry + "\n")
+	_, err = f.WriteString(toWrite)
 	return err
 }
 
