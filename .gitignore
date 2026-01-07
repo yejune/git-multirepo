@@ -30,3 +30,5 @@ coverage.out
 
 # Build
 build/
+*.pyc
+__pycache__/
