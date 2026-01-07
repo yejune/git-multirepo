@@ -96,7 +96,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 				// Directory exists with files - init git in place
 				fmt.Printf("    → Initializing .git (source files already present)\n")
 
-				if err := git.InitRepo(fullPath, sc.Repo, sc.Branch); err != nil {
+				if err := git.InitRepo(fullPath, sc.Repo, sc.Branch, sc.Commit); err != nil {
 					fmt.Printf("    ✗ Failed to initialize: %v\n", err)
 					issues++
 					continue
@@ -138,6 +138,27 @@ func runSync(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
+		// Auto-update commit hash in .gitsubs
+		commit, err := git.GetCurrentCommit(fullPath)
+		if err == nil && commit != sc.Commit {
+			// Check if pushed
+			hasUnpushed, checkErr := git.HasUnpushedCommits(fullPath)
+			if checkErr == nil {
+				if hasUnpushed {
+					fmt.Printf("    ⚠ Has unpushed commits (%s)\n", commit[:7])
+					fmt.Printf("      Push first: cd %s && git push\n", sc.Path)
+				} else {
+					// Update .gitsubs with pushed commit
+					oldCommit := "none"
+					if sc.Commit != "" {
+						oldCommit = sc.Commit[:7]
+					}
+					m.UpdateCommit(sc.Path, commit)
+					fmt.Printf("    ✓ Updated commit: %s → %s\n", oldCommit, commit[:7])
+				}
+			}
+		}
+
 		// Verify and fix .gitignore entry
 		if !hasGitignoreEntry(repoRoot, sc.Path) {
 			fmt.Printf("    → Adding to .gitignore\n")
@@ -161,6 +182,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 		} else {
 			fmt.Printf("    ✓ No skip-worktree config\n")
 		}
+	}
+
+	// Save manifest if any commits were updated
+	if err := manifest.Save(repoRoot, m); err != nil {
+		return fmt.Errorf("failed to save manifest: %w", err)
 	}
 
 	// Summary

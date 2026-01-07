@@ -98,8 +98,15 @@ func runRoot(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to clone: %w", err)
 	}
 
-	// Add to manifest
+	// Get current commit hash
+	commit, err := git.GetCurrentCommit(fullPath)
+	if err != nil {
+		return fmt.Errorf("failed to get commit: %w", err)
+	}
+
+	// Add to manifest with commit hash
 	m.Add(path, repo)
+	m.UpdateCommit(path, commit)
 	if err := manifest.Save(repoRoot, m); err != nil {
 		return fmt.Errorf("failed to save manifest: %w", err)
 	}

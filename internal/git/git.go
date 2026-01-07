@@ -25,7 +25,7 @@ func Clone(repo, path, branch string) error {
 
 // InitRepo initializes a git repository in an existing directory with source files
 // This is used when source files are already tracked by parent but .git is missing
-func InitRepo(path, repo, branch string) error {
+func InitRepo(path, repo, branch, commit string) error {
 	// Create a temporary directory for bare clone
 	tempDir, err := os.MkdirTemp("", "git-sub-*")
 	if err != nil {
@@ -56,6 +56,16 @@ func InitRepo(path, repo, branch string) error {
 	cmd = exec.Command("git", "-C", path, "config", "--bool", "core.bare", "false")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to configure: %w", err)
+	}
+
+	// Checkout specific commit if provided
+	if commit != "" {
+		cmd = exec.Command("git", "-C", path, "checkout", commit)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to checkout %s: %w", commit[:7], err)
+		}
 	}
 
 	// Reset index to match HEAD (don't touch working tree files)
@@ -298,6 +308,44 @@ func GetCurrentBranch(path string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// GetCurrentCommit returns the current HEAD commit hash
+func GetCurrentCommit(path string) (string, error) {
+	cmd := exec.Command("git", "-C", path, "rev-parse", "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// HasUnpushedCommits checks if there are commits not pushed to remote
+func HasUnpushedCommits(path string) (bool, error) {
+	// Get current branch
+	cmd := exec.Command("git", "-C", path, "rev-parse", "--abbrev-ref", "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		return false, err
+	}
+	branch := strings.TrimSpace(string(out))
+
+	// Check if branch has upstream
+	cmd = exec.Command("git", "-C", path, "rev-parse", "--abbrev-ref", branch+"@{upstream}")
+	if err := cmd.Run(); err != nil {
+		// No upstream configured - consider as unpushed
+		return true, nil
+	}
+
+	// Compare with upstream
+	cmd = exec.Command("git", "-C", path, "rev-list", "--count", branch+"@{upstream}.."+branch)
+	out, err = cmd.Output()
+	if err != nil {
+		return false, err
+	}
+
+	count := strings.TrimSpace(string(out))
+	return count != "0", nil
 }
 
 // GetRemoteURL returns the remote origin URL

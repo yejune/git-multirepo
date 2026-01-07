@@ -20,6 +20,7 @@ type Subclone struct {
 	Path   string   `yaml:"path"`
 	Repo   string   `yaml:"repo"`
 	Branch string   `yaml:"branch,omitempty"`
+	Commit string   `yaml:"commit,omitempty"`
 	Skip   []string `yaml:"skip,omitempty"`
 }
 
@@ -100,6 +101,17 @@ func (m *Manifest) Remove(path string) bool {
 	for i, sc := range m.Subclones {
 		if sc.Path == path {
 			m.Subclones = append(m.Subclones[:i], m.Subclones[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
+// UpdateCommit updates the commit hash for a subclone
+func (m *Manifest) UpdateCommit(path, commit string) bool {
+	for i, sc := range m.Subclones {
+		if sc.Path == path {
+			m.Subclones[i].Commit = commit
 			return true
 		}
 	}
