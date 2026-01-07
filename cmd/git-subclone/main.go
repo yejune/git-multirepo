@@ -15,7 +15,6 @@ import (
 var (
 	version   = "0.1.0"
 	recursive bool
-	branch    string
 )
 
 func main() {
@@ -33,7 +32,6 @@ func main() {
 		Args:  cobra.ExactArgs(2),
 		RunE:  runAdd,
 	}
-	addCmd.Flags().StringVarP(&branch, "branch", "b", "", "Branch to clone")
 	rootCmd.AddCommand(addCmd)
 
 	// sync command
@@ -87,6 +85,14 @@ func main() {
 	}
 	verifyCmd.Flags().BoolP("fix", "f", false, "Automatically fix issues")
 	rootCmd.AddCommand(verifyCmd)
+
+	// clean command (clean autoIgnore)
+	cleanCmd := &cobra.Command{
+		Use:   "clean",
+		Short: "Clean autoIgnore patterns from .gitignore",
+		RunE:  runClean,
+	}
+	rootCmd.AddCommand(cleanCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -173,12 +179,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	// Clone repository
 	fmt.Printf("Cloning %s into %s...\n", repo, path)
-	if err := git.Clone(repo, fullPath, branch); err != nil {
+	if err := git.Clone(repo, fullPath, ""); err != nil {
 		return fmt.Errorf("failed to clone: %w", err)
 	}
 
 	// Add to manifest
-	m.Add(path, repo, branch)
+	m.Add(path, repo)
 	if err := manifest.Save(repoRoot, m); err != nil {
 		return err
 	}

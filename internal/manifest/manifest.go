@@ -15,17 +15,16 @@ var marshalFunc = yaml.Marshal
 
 // Subclone represents a single subclone entry
 type Subclone struct {
-	Path       string   `yaml:"path"`
-	Repo       string   `yaml:"repo"`
-	Branch     string   `yaml:"branch,omitempty"`
-	LocalFiles []string `yaml:"localFiles,omitempty"`
+	Path string   `yaml:"path"`
+	Repo string   `yaml:"repo"`
+	Skip []string `yaml:"skip,omitempty"`
 }
 
 // Manifest represents the .subclones.yaml file structure
 type Manifest struct {
-	LocalFiles []string   `yaml:"localFiles,omitempty"`
-	AutoIgnore []string   `yaml:"autoIgnore,omitempty"`
-	Subclones  []Subclone `yaml:"subclones"`
+	Skip      []string   `yaml:"skip,omitempty"`
+	Ignore    []string   `yaml:"ignore,omitempty"`
+	Subclones []Subclone `yaml:"subclones"`
 }
 
 // Load reads the manifest from the given directory
@@ -62,11 +61,10 @@ func Save(dir string, m *Manifest) error {
 }
 
 // Add adds a new subclone to the manifest
-func (m *Manifest) Add(path, repo, branch string) {
+func (m *Manifest) Add(path, repo string) {
 	m.Subclones = append(m.Subclones, Subclone{
-		Path:   path,
-		Repo:   repo,
-		Branch: branch,
+		Path: path,
+		Repo: repo,
 	})
 }
 

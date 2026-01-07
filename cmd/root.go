@@ -100,7 +100,7 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	}
 
 	// Add to manifest
-	m.Add(path, repo, rootBranch)
+	m.Add(path, repo)
 	if err := manifest.Save(repoRoot, m); err != nil {
 		return fmt.Errorf("failed to save manifest: %w", err)
 	}
@@ -112,9 +112,6 @@ func runRoot(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("✓ Added subclone: %s\n", path)
 	fmt.Printf("  Repository: %s\n", repo)
-	if rootBranch != "" {
-		fmt.Printf("  Branch: %s\n", rootBranch)
-	}
 
 	return nil
 }

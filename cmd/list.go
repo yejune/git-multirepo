@@ -78,11 +78,6 @@ func listDir(dir string, recursive bool, depth int) error {
 		}
 
 		// Format output
-		branchInfo := ""
-		if sc.Branch != "" {
-			branchInfo = fmt.Sprintf(" (%s)", sc.Branch)
-		}
-
 		statusIcon := map[string]string{
 			"clean":      "✓",
 			"modified":   "●",
@@ -90,7 +85,7 @@ func listDir(dir string, recursive bool, depth int) error {
 			"error":      "✗",
 		}[status]
 
-		fmt.Printf("%s%s %s%s\n", indent, statusIcon, sc.Path, branchInfo)
+		fmt.Printf("%s%s %s\n", indent, statusIcon, sc.Path)
 		fmt.Printf("%s  └─ %s\n", indent, sc.Repo)
 
 		// Recursive list

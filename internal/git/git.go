@@ -102,8 +102,8 @@ func AddToGitignore(repoRoot, path string) error {
 	return err
 }
 
-// AddPatternsToGitignore adds multiple patterns to .gitignore
-func AddPatternsToGitignore(repoRoot string, patterns []string) error {
+// AddIgnorePatternsToGitignore adds multiple patterns to .gitignore
+func AddIgnorePatternsToGitignore(repoRoot string, patterns []string) error {
 	if len(patterns) == 0 {
 		return nil
 	}
@@ -153,7 +153,7 @@ func AddPatternsToGitignore(repoRoot string, patterns []string) error {
 	}
 
 	// Add header comment
-	if _, err := f.WriteString("\n# git-subclone autoIgnore\n"); err != nil {
+	if _, err := f.WriteString("\n# git-subclone ignore\n"); err != nil {
 		return err
 	}
 
@@ -165,6 +165,47 @@ func AddPatternsToGitignore(repoRoot string, patterns []string) error {
 	}
 
 	return nil
+}
+
+// RemoveIgnorePatternsFromGitignore removes git-subclone ignore section from .gitignore
+func RemoveIgnorePatternsFromGitignore(repoRoot string) error {
+	gitignorePath := filepath.Join(repoRoot, ".gitignore")
+
+	content, err := os.ReadFile(gitignorePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	lines := strings.Split(string(content), "\n")
+	var newLines []string
+	inIgnoreSection := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Start of ignore section
+		if trimmed == "# git-subclone ignore" {
+			inIgnoreSection = true
+			continue
+		}
+
+		// End of ignore section (empty line or next section)
+		if inIgnoreSection {
+			if trimmed == "" || (strings.HasPrefix(trimmed, "#") && !strings.Contains(trimmed, "git-subclone")) {
+				inIgnoreSection = false
+			} else {
+				// Skip lines in ignore section
+				continue
+			}
+		}
+
+		newLines = append(newLines, line)
+	}
+
+	return os.WriteFile(gitignorePath, []byte(strings.Join(newLines, "\n")), 0644)
 }
 
 // RemoveFromGitignore removes a path's .git directory from .gitignore

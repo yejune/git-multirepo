@@ -4,33 +4,31 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/yejune/git-subclone/internal/git"
+	"github.com/yejune/git-subclone/internal/hooks"
 	"github.com/yejune/git-subclone/internal/manifest"
 )
 
-var syncRecursive bool
-
 var syncCmd = &cobra.Command{
 	Use:   "sync",
-	Short: "Clone or pull all registered subclones",
-	Long: `Synchronize all subclones registered in .subclones.yaml.
+	Short: "Apply ignore and skip-worktree settings",
+	Long: `Apply configuration from .subclones.yaml:
+  - Install git hooks if not present
+  - Apply ignore patterns to .gitignore
+  - Apply skip-worktree to specified files
+  - Verify .gitignore entries for subclones
 
-For each subclone:
-  - If not cloned yet: clone it
-  - If already exists: pull latest changes
-
-Use --recursive to also sync subclones within subclones.
+Does NOT pull or clone repositories.
 
 Examples:
-  git-subclone sync
-  git-subclone sync --recursive`,
+  git-subclone sync`,
 	RunE: runSync,
 }
 
 func init() {
-	syncCmd.Flags().BoolVarP(&syncRecursive, "recursive", "r", false, "Recursively sync subclones within subclones")
 	rootCmd.AddCommand(syncCmd)
 }
 
@@ -40,72 +38,113 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("not in a git repository: %w", err)
 	}
 
-	return syncDir(repoRoot, syncRecursive, 0)
-}
+	fmt.Println("Syncing configuration...\n")
 
-func syncDir(dir string, recursive bool, depth int) error {
-	indent := ""
-	for i := 0; i < depth; i++ {
-		indent += "  "
+	// 1. Auto-install hooks
+	if !hooks.IsInstalled(repoRoot) {
+		fmt.Println("→ Installing git hooks")
+		if err := hooks.Install(repoRoot); err != nil {
+			fmt.Printf("  ✗ Failed: %v\n", err)
+		} else {
+			fmt.Println("  ✓ Installed")
+		}
 	}
 
-	m, err := manifest.Load(dir)
+	// 2. Load manifest
+	m, err := manifest.Load(repoRoot)
 	if err != nil {
 		return fmt.Errorf("failed to load manifest: %w", err)
 	}
 
 	if len(m.Subclones) == 0 {
-		if depth == 0 {
-			fmt.Println("No subclones registered. Use 'git-subclone add' to add one.")
-		}
+		fmt.Println("No subclones registered.")
 		return nil
 	}
 
-	for _, sc := range m.Subclones {
-		fullPath := filepath.Join(dir, sc.Path)
-
-		if git.IsRepo(fullPath) {
-			// Already cloned, pull
-			fmt.Printf("%s↻ Pulling %s...\n", indent, sc.Path)
-			if err := git.Pull(fullPath); err != nil {
-				fmt.Printf("%s  ✗ Failed to pull: %v\n", indent, err)
-				continue
-			}
-			fmt.Printf("%s  ✓ Updated\n", indent)
+	// 3. Apply ignore patterns to mother repo
+	if len(m.Ignore) > 0 {
+		fmt.Println("→ Applying ignore patterns")
+		if err := git.AddIgnorePatternsToGitignore(repoRoot, m.Ignore); err != nil {
+			fmt.Printf("  ✗ Failed: %v\n", err)
 		} else {
-			// Not cloned, clone it
-			fmt.Printf("%s↓ Cloning %s...\n", indent, sc.Path)
-
-			// Create parent directory if needed
-			parentDir := filepath.Dir(fullPath)
-			if err := os.MkdirAll(parentDir, 0755); err != nil {
-				fmt.Printf("%s  ✗ Failed to create directory: %v\n", indent, err)
-				continue
-			}
-
-			if err := git.Clone(sc.Repo, fullPath, sc.Branch); err != nil {
-				fmt.Printf("%s  ✗ Failed to clone: %v\n", indent, err)
-				continue
-			}
-
-			// Add .git to parent's .gitignore
-			if err := git.AddToGitignore(dir, sc.Path); err != nil {
-				fmt.Printf("%s  ⚠ Failed to update .gitignore: %v\n", indent, err)
-			}
-
-			fmt.Printf("%s  ✓ Cloned\n", indent)
-		}
-
-		// Recursive sync
-		if recursive {
-			subManifest := filepath.Join(fullPath, manifest.FileName)
-			if _, err := os.Stat(subManifest); err == nil {
-				if err := syncDir(fullPath, recursive, depth+1); err != nil {
-					fmt.Printf("%s  ⚠ Recursive sync warning: %v\n", indent, err)
-				}
-			}
+			fmt.Printf("  ✓ Applied %d patterns\n", len(m.Ignore))
 		}
 	}
 
+	// 4. Apply skip-worktree to mother repo
+	if len(m.Skip) > 0 {
+		fmt.Println("→ Applying skip-worktree to mother repo")
+		if err := git.ApplySkipWorktree(repoRoot, m.Skip); err != nil {
+			fmt.Printf("  ✗ Failed: %v\n", err)
+		} else {
+			fmt.Printf("  ✓ Applied to %d files\n", len(m.Skip))
+		}
+	}
+
+	// 5. Process each subclone
+	fmt.Println("\n→ Processing subclones:")
+	issues := 0
+
+	for _, sc := range m.Subclones {
+		fullPath := filepath.Join(repoRoot, sc.Path)
+		fmt.Printf("\n  %s\n", sc.Path)
+
+		// Check if subclone exists
+		if !git.IsRepo(fullPath) {
+			fmt.Printf("    ✗ Not cloned (run: git subclone %s %s)\n", sc.Repo, sc.Path)
+			issues++
+			continue
+		}
+
+		// Verify and fix .gitignore entry
+		if !hasGitignoreEntry(repoRoot, sc.Path) {
+			fmt.Printf("    → Adding to .gitignore\n")
+			if err := git.AddToGitignore(repoRoot, sc.Path); err != nil {
+				fmt.Printf("    ✗ Failed: %v\n", err)
+				issues++
+			} else {
+				fmt.Printf("    ✓ Added\n")
+			}
+		}
+
+		// Apply skip-worktree for this subclone
+		if len(sc.Skip) > 0 {
+			fmt.Printf("    → Applying skip-worktree (%d files)\n", len(sc.Skip))
+			if err := git.ApplySkipWorktree(fullPath, sc.Skip); err != nil {
+				fmt.Printf("    ✗ Failed: %v\n", err)
+				issues++
+			} else {
+				fmt.Printf("    ✓ Applied\n")
+			}
+		} else {
+			fmt.Printf("    ✓ No skip-worktree config\n")
+		}
+	}
+
+	// Summary
+	fmt.Println()
+	if issues > 0 {
+		fmt.Printf("⚠ Completed with %d issue(s)\n", issues)
+	} else {
+		fmt.Println("✓ All configurations applied successfully")
+	}
+
 	return nil
+}
+
+func hasGitignoreEntry(repoRoot, path string) bool {
+	gitignorePath := filepath.Join(repoRoot, ".gitignore")
+	content, err := os.ReadFile(gitignorePath)
+	if err != nil {
+		return false
+	}
+
+	expected := path + "/.git/"
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		if strings.TrimSpace(line) == expected {
+			return true
+		}
+	}
+	return false
 }
