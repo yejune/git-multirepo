@@ -194,10 +194,39 @@ my-project/
 
 ### Key Points
 
-1. **Independent Git**: Each sub has its own `.git` directory
+1. **Independent Git**: Each sub has its own `.git` directory (local only)
 2. **Source Tracking**: Parent tracks sub's source files (not `.git`)
 3. **Direct Push**: `cd packages/lib && git push` works as expected
-4. **Manifest File**: `.gitsubs` records all subs
+4. **Manifest File**: `.gitsubs` records all subs for recreation
+
+### Workflow
+
+**Developer A adds a sub:**
+```bash
+git sub clone https://github.com/user/lib.git packages/lib
+# Creates: packages/lib/.git/ (local)
+# Ignores: packages/lib/.git/ → .gitignore
+# Tracks: packages/lib/*.go → parent repo
+# Records: packages/lib info → .gitsubs
+
+git add .
+git commit -m "Add lib sub"
+git push  # Pushes: source files + .gitsubs (NOT .git)
+```
+
+**Developer B clones:**
+```bash
+git clone <parent-repo>
+# Gets: .gitsubs + source files
+# Missing: packages/lib/.git/
+
+git sub sync  # or use post-checkout hook
+# Reads: .gitsubs
+# Clones: each sub → recreates .git directories
+# Now: cd packages/lib && git push works!
+```
+
+The `.git` directories are never pushed - they're recreated locally from `.gitsubs` manifest.
 
 ### Manifest Format
 
