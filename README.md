@@ -207,11 +207,23 @@ git sub clone https://github.com/user/lib.git packages/lib
 # Creates: packages/lib/.git/ (local)
 # Ignores: packages/lib/.git/ → .gitignore
 # Tracks: packages/lib/*.go → parent repo
-# Records: packages/lib info → .gitsubs
+# Records: path, repo, commit hash → .gitsubs
 
 git add .
 git commit -m "Add lib sub"
 git push  # Pushes: source files + .gitsubs (NOT .git)
+```
+
+**Developer A updates sub:**
+```bash
+cd packages/lib
+git commit && git push  # ← Must push to remote!
+
+cd ../..
+git add packages/lib/    # Stage updated source
+git sub sync             # ← Auto-updates .gitsubs with new commit!
+git commit -m "Update lib"
+git push
 ```
 
 **Developer B clones:**
@@ -221,12 +233,16 @@ git clone <parent-repo>
 # Missing: packages/lib/.git/
 
 git sub sync  # or use post-checkout hook
-# Reads: .gitsubs
-# Clones: each sub → recreates .git directories
+# Reads: .gitsubs commit hash
+# Restores: .git at exact commit
 # Now: cd packages/lib && git push works!
 ```
 
-The `.git` directories are never pushed - they're recreated locally from `.gitsubs` manifest.
+**Key Points:**
+- `.git` directories are never pushed
+- Commit hashes ensure version consistency
+- `git sub sync` handles everything automatically
+- Unpushed commits trigger warnings
 
 ### Manifest Format
 
@@ -235,8 +251,10 @@ subclones:
   - path: packages/lib
     repo: https://github.com/user/lib.git
     branch: main
+    commit: abc123def456789...  # Exact commit hash
   - path: packages/utils
     repo: git@github.com:user/utils.git
+    commit: 789def456abc123...
 ```
 
 ## License
