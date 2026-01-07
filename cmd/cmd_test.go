@@ -8,7 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yejune/git-subclone/internal/manifest"
+	"github.com/yejune/git-sub/internal/hooks"
+	"github.com/yejune/git-sub/internal/manifest"
 )
 
 // setupTestEnv creates a test environment with a git repository
@@ -122,46 +123,39 @@ func TestRunSync(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	remoteRepo := setupRemoteRepo(t)
-
-	// Create manifest with subclone
+	// Create manifest with ignore/skip patterns
 	m := &manifest.Manifest{
-		Subclones: []manifest.Subclone{
-			{Path: "packages/sync-test", Repo: remoteRepo},
-		},
+		Ignore: []string{"*.log"},
+		Skip:   []string{"config.local"},
 	}
 	manifest.Save(dir, m)
 
-	t.Run("sync clones new subclone", func(t *testing.T) {
-		syncRecursive = false
-
+	t.Run("sync applies configuration", func(t *testing.T) {
 		err := runSync(syncCmd, []string{})
 		if err != nil {
 			t.Fatalf("runSync failed: %v", err)
 		}
 
-		// Check subclone exists
-		if _, err := os.Stat(filepath.Join(dir, "packages/sync-test/.git")); os.IsNotExist(err) {
-			t.Error("subclone should be cloned")
+		// Check hooks installed
+		if !hooks.IsInstalled(dir) {
+			t.Error("hooks should be installed")
+		}
+
+		// Check .gitignore updated
+		gitignoreContent, _ := os.ReadFile(filepath.Join(dir, ".gitignore"))
+		if !strings.Contains(string(gitignoreContent), "*.log") {
+			t.Error(".gitignore should contain ignore pattern")
 		}
 	})
 
-	t.Run("sync pulls existing subclone", func(t *testing.T) {
-		syncRecursive = false
-
-		// Add a new commit to remote
-		os.WriteFile(filepath.Join(remoteRepo, "new.txt"), []byte("new"), 0644)
-		exec.Command("git", "-C", remoteRepo, "add", ".").Run()
-		exec.Command("git", "-C", remoteRepo, "commit", "-m", "New file").Run()
+	t.Run("sync with no configuration", func(t *testing.T) {
+		// Empty manifest
+		m := &manifest.Manifest{}
+		manifest.Save(dir, m)
 
 		err := runSync(syncCmd, []string{})
 		if err != nil {
-			t.Fatalf("runSync failed: %v", err)
-		}
-
-		// Check new file exists
-		if _, err := os.Stat(filepath.Join(dir, "packages/sync-test/new.txt")); os.IsNotExist(err) {
-			t.Error("new file should be pulled")
+			t.Fatalf("runSync should succeed with empty manifest: %v", err)
 		}
 	})
 }
@@ -177,8 +171,6 @@ func TestRunList(t *testing.T) {
 	runAdd(addCmd, []string{remoteRepo, "packages/list-test"})
 
 	t.Run("list subclones", func(t *testing.T) {
-		listRecursive = false
-
 		output := captureOutput(func() {
 			runList(listCmd, []string{})
 		})
@@ -253,40 +245,8 @@ func TestRunRemove(t *testing.T) {
 	})
 }
 
-func TestRunInit(t *testing.T) {
-	dir, cleanup := setupTestEnv(t)
-	defer cleanup()
-
-	t.Run("install hooks", func(t *testing.T) {
-		initUninstall = false
-
-		err := runInit(initCmd, []string{})
-		if err != nil {
-			t.Fatalf("runInit failed: %v", err)
-		}
-
-		// Check hook exists
-		hookPath := filepath.Join(dir, ".git", "hooks", "post-checkout")
-		if _, err := os.Stat(hookPath); os.IsNotExist(err) {
-			t.Error("hook should be installed")
-		}
-	})
-
-	t.Run("uninstall hooks", func(t *testing.T) {
-		initUninstall = true
-
-		err := runInit(initCmd, []string{})
-		if err != nil {
-			t.Fatalf("runInit uninstall failed: %v", err)
-		}
-
-		// Check hook removed
-		hookPath := filepath.Join(dir, ".git", "hooks", "post-checkout")
-		if _, err := os.Stat(hookPath); !os.IsNotExist(err) {
-			t.Error("hook should be uninstalled")
-		}
-	})
-}
+// TestRunInit removed - init command was removed in v0.1.0
+// Hooks are now auto-installed by sync command
 
 func TestRunRoot(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
@@ -400,57 +360,10 @@ func TestPushSubclone(t *testing.T) {
 	})
 }
 
-func TestSyncRecursive(t *testing.T) {
-	dir, cleanup := setupTestEnv(t)
-	defer cleanup()
+// TestSyncRecursive removed - syncRecursive flag was removed from command line in v0.1.0
+// Recursive functionality still exists in code but is not exposed as a flag
 
-	remoteRepo := setupRemoteRepo(t)
-
-	// Create subclone with nested .subclones.yaml
-	addBranch = ""
-	runAdd(addCmd, []string{remoteRepo, "packages/nested"})
-
-	// Create nested manifest in subclone
-	nestedDir := filepath.Join(dir, "packages/nested")
-	nestedManifest := filepath.Join(nestedDir, ".subclones.yaml")
-	os.WriteFile(nestedManifest, []byte("subclones: []\n"), 0644)
-
-	t.Run("recursive sync", func(t *testing.T) {
-		syncRecursive = true
-		err := runSync(syncCmd, []string{})
-		if err != nil {
-			t.Fatalf("recursive sync failed: %v", err)
-		}
-	})
-}
-
-func TestListRecursive(t *testing.T) {
-	dir, cleanup := setupTestEnv(t)
-	defer cleanup()
-
-	remoteRepo := setupRemoteRepo(t)
-
-	// Create subclone
-	addBranch = ""
-	runAdd(addCmd, []string{remoteRepo, "packages/recursive-test"})
-
-	// Create nested manifest in subclone
-	nestedDir := filepath.Join(dir, "packages/recursive-test")
-	nestedManifest := filepath.Join(nestedDir, ".subclones.yaml")
-	os.WriteFile(nestedManifest, []byte("subclones:\n  - path: sub\n    repo: https://example.com/sub.git\n"), 0644)
-
-	t.Run("recursive list", func(t *testing.T) {
-		listRecursive = true
-
-		output := captureOutput(func() {
-			runList(listCmd, []string{})
-		})
-
-		if !strings.Contains(output, "packages/recursive-test") {
-			t.Errorf("should show parent subclone, got: %s", output)
-		}
-	})
-}
+// TestListRecursive removed - listRecursive flag not exposed in v0.1.0
 
 func TestRemoveKeepFiles(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
@@ -497,12 +410,14 @@ func TestAddWithBranch(t *testing.T) {
 			t.Fatalf("add with branch failed: %v", err)
 		}
 
-		// Check manifest has branch
+		// Check manifest exists and has subclone (Branch field removed in v0.1.0)
 		m, _ := manifest.Load(dir)
 		sc := m.Find("packages/branch-test")
-		if sc == nil || sc.Branch != "develop" {
-			t.Error("should record branch in manifest")
+		if sc == nil {
+			t.Error("should record subclone in manifest")
 		}
+		// Branch field was removed from manifest in v0.1.0
+		_ = dir
 	})
 }
 
@@ -558,8 +473,6 @@ func TestSyncWithExistingSubclone(t *testing.T) {
 	runAdd(addCmd, []string{remoteRepo, "packages/existing"})
 
 	t.Run("sync existing subclone pulls", func(t *testing.T) {
-		syncRecursive = false
-
 		output := captureOutput(func() {
 			runSync(syncCmd, []string{})
 		})
@@ -575,8 +488,6 @@ func TestListEmpty(t *testing.T) {
 	defer cleanup()
 
 	t.Run("list with no subclones", func(t *testing.T) {
-		listRecursive = false
-
 		output := captureOutput(func() {
 			runList(listCmd, []string{})
 		})
@@ -607,8 +518,6 @@ func TestSyncEmpty(t *testing.T) {
 	defer cleanup()
 
 	t.Run("sync with no subclones", func(t *testing.T) {
-		syncRecursive = false
-
 		output := captureOutput(func() {
 			runSync(syncCmd, []string{})
 		})
@@ -633,23 +542,7 @@ func TestPushAllNoSubclones(t *testing.T) {
 	})
 }
 
-func TestInitAlreadyInstalled(t *testing.T) {
-	_, cleanup := setupTestEnv(t)
-	defer cleanup()
-
-	t.Run("init twice", func(t *testing.T) {
-		initUninstall = false
-		runInit(initCmd, []string{})
-
-		output := captureOutput(func() {
-			runInit(initCmd, []string{})
-		})
-
-		if !strings.Contains(output, "already installed") {
-			t.Log("init detected existing hook")
-		}
-	})
-}
+// TestInitAlreadyInstalled removed - init command was removed in v0.1.0
 
 func TestRemoveWithChanges(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
@@ -761,7 +654,6 @@ func TestRunListNotInGitRepo(t *testing.T) {
 	os.Chdir(dir)
 
 	t.Run("list outside git repo", func(t *testing.T) {
-		listRecursive = false
 		err := runList(listCmd, []string{})
 		if err == nil {
 			t.Error("should error when not in a git repository")
@@ -779,7 +671,6 @@ func TestRunSyncNotInGitRepo(t *testing.T) {
 	os.Chdir(dir)
 
 	t.Run("sync outside git repo", func(t *testing.T) {
-		syncRecursive = false
 		err := runSync(syncCmd, []string{})
 		if err == nil {
 			t.Error("should error when not in a git repository")
@@ -862,23 +753,7 @@ func TestRunRootNotInGitRepo(t *testing.T) {
 	})
 }
 
-func TestRunInitNotInGitRepo(t *testing.T) {
-	dir := t.TempDir()
-	originalDir, _ := os.Getwd()
-	defer os.Chdir(originalDir)
-	os.Chdir(dir)
-
-	t.Run("init outside git repo", func(t *testing.T) {
-		initUninstall = false
-		err := runInit(initCmd, []string{})
-		if err == nil {
-			t.Error("should error when not in a git repository")
-		}
-		if !strings.Contains(err.Error(), "not in a git repository") {
-			t.Errorf("expected 'not in a git repository' error, got: %v", err)
-		}
-	})
-}
+// TestRunInitNotInGitRepo removed - init command was removed in v0.1.0
 
 func TestListDirWithError(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
@@ -891,8 +766,6 @@ func TestListDirWithError(t *testing.T) {
 	runAdd(addCmd, []string{remoteRepo, "packages/test"})
 
 	t.Run("listDir with HasChanges error", func(t *testing.T) {
-		listRecursive = false
-
 		// Remove .git to cause HasChanges error
 		subPath := filepath.Join(dir, "packages/test")
 		gitPath := filepath.Join(subPath, ".git")
@@ -935,31 +808,9 @@ func TestStatusWithNotCloned(t *testing.T) {
 	})
 }
 
-func TestSyncWithCloneError(t *testing.T) {
-	dir, cleanup := setupTestEnv(t)
-	defer cleanup()
-
-	// Create manifest with invalid repo URL
-	m := &manifest.Manifest{
-		Subclones: []manifest.Subclone{
-			{Path: "packages/invalid", Repo: "/nonexistent/repo"},
-		},
-	}
-	manifest.Save(dir, m)
-
-	t.Run("sync with clone error", func(t *testing.T) {
-		syncRecursive = false
-
-		output := captureOutput(func() {
-			runSync(syncCmd, []string{})
-		})
-
-		// Should show error message but not return error (continues with other subclones)
-		if !strings.Contains(output, "Failed to clone") && !strings.Contains(output, "Cloning") {
-			t.Errorf("output should show clone attempt, got: %s", output)
-		}
-	})
-}
+// TestSyncWithCloneError removed - sync no longer performs clone operations in v0.1.0
+// Sync only applies configuration (ignore/skip patterns)
+// Cloning is done via the main command: git-sub <url> <path>
 
 func TestSyncDirRecursiveWithError(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
@@ -973,12 +824,11 @@ func TestSyncDirRecursiveWithError(t *testing.T) {
 
 	// Create invalid nested manifest
 	nestedDir := filepath.Join(dir, "packages/nested")
-	nestedManifest := filepath.Join(nestedDir, ".subclones.yaml")
+	nestedManifest := filepath.Join(nestedDir, ".gitsubs")
 	os.WriteFile(nestedManifest, []byte("invalid: yaml: [[["), 0644)
 
-	t.Run("recursive sync with invalid nested manifest", func(t *testing.T) {
-		syncRecursive = true
-
+	// Recursive sync test removed - syncRecursive flag not exposed in v0.1.0
+	t.Run("sync with invalid nested manifest", func(t *testing.T) {
 		output := captureOutput(func() {
 			runSync(syncCmd, []string{})
 		})
@@ -989,34 +839,7 @@ func TestSyncDirRecursiveWithError(t *testing.T) {
 	})
 }
 
-func TestListDirRecursiveWithNestedError(t *testing.T) {
-	dir, cleanup := setupTestEnv(t)
-	defer cleanup()
-
-	remoteRepo := setupRemoteRepo(t)
-
-	// Create subclone
-	addBranch = ""
-	runAdd(addCmd, []string{remoteRepo, "packages/nested"})
-
-	// Create invalid nested manifest
-	nestedDir := filepath.Join(dir, "packages/nested")
-	nestedManifest := filepath.Join(nestedDir, ".subclones.yaml")
-	os.WriteFile(nestedManifest, []byte("invalid: yaml: [[["), 0644)
-
-	t.Run("recursive list with invalid nested manifest", func(t *testing.T) {
-		listRecursive = true
-
-		output := captureOutput(func() {
-			runList(listCmd, []string{})
-		})
-
-		// Should show warning for nested manifest error
-		if !strings.Contains(output, "packages/nested") {
-			t.Errorf("output should show nested path, got: %s", output)
-		}
-	})
-}
+// TestListDirRecursiveWithNestedError removed - listRecursive flag not exposed in v0.1.0
 
 func TestPushSubcloneWithPushError(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
@@ -1085,7 +908,7 @@ func TestRemoveWithManifestSaveError(t *testing.T) {
 	runAdd(addCmd, []string{remoteRepo, "packages/remove-error"})
 
 	// Make manifest file read-only
-	manifestPath := filepath.Join(dir, ".subclones.yaml")
+	manifestPath := filepath.Join(dir, ".gitsubs")
 	os.Chmod(manifestPath, 0444)
 	defer os.Chmod(manifestPath, 0644) // Restore for cleanup
 
@@ -1189,8 +1012,6 @@ func TestSyncPullError(t *testing.T) {
 	exec.Command("git", "-C", subPath, "remote", "remove", "origin").Run()
 
 	t.Run("sync with pull error", func(t *testing.T) {
-		syncRecursive = false
-
 		output := captureOutput(func() {
 			runSync(syncCmd, []string{})
 		})
@@ -1290,30 +1111,7 @@ func TestPushAllWithHasChangesError(t *testing.T) {
 	})
 }
 
-func TestInitUninstallSuccess(t *testing.T) {
-	_, cleanup := setupTestEnv(t)
-	defer cleanup()
-
-	// First install
-	initUninstall = false
-	runInit(initCmd, []string{})
-
-	// Then uninstall
-	t.Run("uninstall hooks success", func(t *testing.T) {
-		initUninstall = true
-
-		output := captureOutput(func() {
-			err := runInit(initCmd, []string{})
-			if err != nil {
-				t.Fatalf("uninstall failed: %v", err)
-			}
-		})
-
-		if !strings.Contains(output, "uninstalled") {
-			t.Errorf("should show uninstalled message, got: %s", output)
-		}
-	})
-}
+// TestInitUninstallSuccess removed - init command was removed in v0.1.0
 
 func TestRootWithBranchFlag(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
@@ -1347,16 +1145,14 @@ func TestStatusWithConfiguredBranch(t *testing.T) {
 	runAdd(addCmd, []string{remoteRepo, "packages/branch-configured"})
 	addBranch = ""
 
-	t.Run("status shows configured branch", func(t *testing.T) {
+	t.Run("status shows subclone info", func(t *testing.T) {
 		output := captureOutput(func() {
 			runStatus(statusCmd, []string{})
 		})
 
-		if !strings.Contains(output, "Configured branch") {
-			t.Errorf("output should show configured branch, got: %s", output)
-		}
-		if !strings.Contains(output, "main") {
-			t.Errorf("output should show 'main' as configured branch, got: %s", output)
+		// Branch field removed in v0.1.0, just verify status works
+		if !strings.Contains(output, "packages/branch-configured") {
+			t.Errorf("output should show subclone path, got: %s", output)
 		}
 		_ = dir // use dir to avoid unused variable warning
 	})
@@ -1373,15 +1169,14 @@ func TestListWithBranch(t *testing.T) {
 	runAdd(addCmd, []string{remoteRepo, "packages/with-branch"})
 	addBranch = ""
 
-	t.Run("list shows branch info", func(t *testing.T) {
-		listRecursive = false
-
+	t.Run("list shows subclone info", func(t *testing.T) {
 		output := captureOutput(func() {
 			runList(listCmd, []string{})
 		})
 
-		if !strings.Contains(output, "(main)") {
-			t.Errorf("output should show branch in parentheses, got: %s", output)
+		// Branch field removed in v0.1.0, just verify list works
+		if !strings.Contains(output, "packages/with-branch") {
+			t.Errorf("output should show subclone path, got: %s", output)
 		}
 		_ = dir
 	})
@@ -1402,8 +1197,6 @@ func TestListWithModifiedSubclone(t *testing.T) {
 	os.WriteFile(filepath.Join(subPath, "change.txt"), []byte("modified"), 0644)
 
 	t.Run("list shows modified status", func(t *testing.T) {
-		listRecursive = false
-
 		output := captureOutput(func() {
 			runList(listCmd, []string{})
 		})
@@ -1431,8 +1224,6 @@ func TestSyncWithMkdirError(t *testing.T) {
 	manifest.Save(dir, m)
 
 	t.Run("sync with mkdir error", func(t *testing.T) {
-		syncRecursive = false
-
 		output := captureOutput(func() {
 			runSync(syncCmd, []string{})
 		})
@@ -1465,8 +1256,6 @@ func TestSyncGitignoreUpdateError(t *testing.T) {
 	defer os.Chmod(gitignorePath, 0644)
 
 	t.Run("sync with gitignore update error", func(t *testing.T) {
-		syncRecursive = false
-
 		output := captureOutput(func() {
 			runSync(syncCmd, []string{})
 		})
@@ -1499,7 +1288,7 @@ func TestRemoveGitignoreError(t *testing.T) {
 
 		output := captureOutput(func() {
 			// This test needs manifest to be writable
-			manifestPath := filepath.Join(dir, ".subclones.yaml")
+			manifestPath := filepath.Join(dir, ".gitsubs")
 			os.Chmod(manifestPath, 0644)
 
 			// Need to reload after chmod
@@ -1589,7 +1378,7 @@ func TestAddWithManifestSaveError(t *testing.T) {
 	manifest.Save(dir, m)
 
 	// Make manifest read-only
-	manifestPath := filepath.Join(dir, ".subclones.yaml")
+	manifestPath := filepath.Join(dir, ".gitsubs")
 	os.Chmod(manifestPath, 0444)
 	defer os.Chmod(manifestPath, 0644)
 
@@ -1668,7 +1457,7 @@ func TestRootWithManifestSaveError(t *testing.T) {
 	manifest.Save(dir, m)
 
 	// Make manifest read-only
-	manifestPath := filepath.Join(dir, ".subclones.yaml")
+	manifestPath := filepath.Join(dir, ".gitsubs")
 	os.Chmod(manifestPath, 0444)
 	defer os.Chmod(manifestPath, 0644)
 
@@ -1714,35 +1503,17 @@ func TestExtractRepoNameWithNestedSshPath(t *testing.T) {
 	}
 }
 
-func TestInitUninstallNotInGitRepo(t *testing.T) {
-	dir := t.TempDir()
-	originalDir, _ := os.Getwd()
-	defer os.Chdir(originalDir)
-	os.Chdir(dir)
-
-	t.Run("uninstall outside git repo", func(t *testing.T) {
-		initUninstall = true
-		err := runInit(initCmd, []string{})
-		if err == nil {
-			t.Error("should error when not in a git repository")
-		}
-		if !strings.Contains(err.Error(), "not in a git repository") {
-			t.Errorf("expected 'not in a git repository' error, got: %v", err)
-		}
-	})
-}
+// TestInitUninstallNotInGitRepo removed - init command was removed in v0.1.0
 
 func TestListDirWithManifestLoadError(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
 	defer cleanup()
 
 	// Create invalid manifest
-	manifestPath := filepath.Join(dir, ".subclones.yaml")
+	manifestPath := filepath.Join(dir, ".gitsubs")
 	os.WriteFile(manifestPath, []byte("invalid: yaml: [[["), 0644)
 
 	t.Run("listDir with manifest load error", func(t *testing.T) {
-		listRecursive = false
-
 		err := runList(listCmd, []string{})
 		if err == nil {
 			t.Error("should error with invalid manifest")
@@ -1758,12 +1529,10 @@ func TestSyncDirWithManifestLoadError(t *testing.T) {
 	defer cleanup()
 
 	// Create invalid manifest
-	manifestPath := filepath.Join(dir, ".subclones.yaml")
+	manifestPath := filepath.Join(dir, ".gitsubs")
 	os.WriteFile(manifestPath, []byte("invalid: yaml: [[["), 0644)
 
 	t.Run("syncDir with manifest load error", func(t *testing.T) {
-		syncRecursive = false
-
 		err := runSync(syncCmd, []string{})
 		if err == nil {
 			t.Error("should error with invalid manifest")
@@ -1779,7 +1548,7 @@ func TestStatusWithManifestLoadError(t *testing.T) {
 	defer cleanup()
 
 	// Create invalid manifest
-	manifestPath := filepath.Join(dir, ".subclones.yaml")
+	manifestPath := filepath.Join(dir, ".gitsubs")
 	os.WriteFile(manifestPath, []byte("invalid: yaml: [[["), 0644)
 
 	t.Run("status with manifest load error", func(t *testing.T) {
@@ -1798,7 +1567,7 @@ func TestPushWithManifestLoadError(t *testing.T) {
 	defer cleanup()
 
 	// Create invalid manifest
-	manifestPath := filepath.Join(dir, ".subclones.yaml")
+	manifestPath := filepath.Join(dir, ".gitsubs")
 	os.WriteFile(manifestPath, []byte("invalid: yaml: [[["), 0644)
 
 	t.Run("push with manifest load error", func(t *testing.T) {
@@ -1819,7 +1588,7 @@ func TestRemoveWithManifestLoadError(t *testing.T) {
 	defer cleanup()
 
 	// Create invalid manifest
-	manifestPath := filepath.Join(dir, ".subclones.yaml")
+	manifestPath := filepath.Join(dir, ".gitsubs")
 	os.WriteFile(manifestPath, []byte("invalid: yaml: [[["), 0644)
 
 	t.Run("remove with manifest load error", func(t *testing.T) {
@@ -1842,7 +1611,7 @@ func TestRootWithManifestLoadError(t *testing.T) {
 	remoteRepo := setupRemoteRepo(t)
 
 	// Create invalid manifest
-	manifestPath := filepath.Join(dir, ".subclones.yaml")
+	manifestPath := filepath.Join(dir, ".gitsubs")
 	os.WriteFile(manifestPath, []byte("invalid: yaml: [[["), 0644)
 
 	t.Run("root with manifest load error", func(t *testing.T) {
@@ -1866,7 +1635,7 @@ func TestAddWithManifestLoadError(t *testing.T) {
 	remoteRepo := setupRemoteRepo(t)
 
 	// Create invalid manifest
-	manifestPath := filepath.Join(dir, ".subclones.yaml")
+	manifestPath := filepath.Join(dir, ".gitsubs")
 	os.WriteFile(manifestPath, []byte("invalid: yaml: [[["), 0644)
 
 	t.Run("add with manifest load error", func(t *testing.T) {
@@ -1882,36 +1651,7 @@ func TestAddWithManifestLoadError(t *testing.T) {
 	})
 }
 
-func TestSyncWithRecursiveNestedSuccess(t *testing.T) {
-	dir, cleanup := setupTestEnv(t)
-	defer cleanup()
-
-	remoteRepo := setupRemoteRepo(t)
-
-	// Create subclone
-	addBranch = ""
-	runAdd(addCmd, []string{remoteRepo, "packages/parent"})
-
-	// Create valid nested manifest
-	nestedDir := filepath.Join(dir, "packages/parent")
-	nestedManifest := filepath.Join(nestedDir, ".subclones.yaml")
-	os.WriteFile(nestedManifest, []byte("subclones: []\n"), 0644)
-
-	t.Run("recursive sync with valid nested manifest", func(t *testing.T) {
-		syncRecursive = true
-
-		output := captureOutput(func() {
-			err := runSync(syncCmd, []string{})
-			if err != nil {
-				t.Fatalf("sync failed: %v", err)
-			}
-		})
-
-		if !strings.Contains(output, "packages/parent") {
-			t.Errorf("output should show parent, got: %s", output)
-		}
-	})
-}
+// TestSyncWithRecursiveNestedSuccess removed - syncRecursive flag not exposed in v0.1.0
 
 // Test remove without force when there are no changes (prompt path - but we skip it with force)
 func TestRemoveNoChangesNoForce(t *testing.T) {
@@ -1999,59 +1739,9 @@ func TestRootWithMkdirError(t *testing.T) {
 }
 
 // Test hooks.Install error path
-func TestInitWithInstallError(t *testing.T) {
-	dir, cleanup := setupTestEnv(t)
-	defer cleanup()
+// TestInitWithInstallError removed - init command was removed in v0.1.0
 
-	// Remove .git/hooks directory permissions
-	hooksDir := filepath.Join(dir, ".git", "hooks")
-	os.Chmod(hooksDir, 0000)
-	defer os.Chmod(hooksDir, 0755)
-
-	t.Run("init with install error", func(t *testing.T) {
-		initUninstall = false
-
-		err := runInit(initCmd, []string{})
-		if err == nil {
-			t.Error("should error when hooks cannot be installed")
-		}
-		if !strings.Contains(err.Error(), "failed to install hooks") {
-			t.Errorf("expected 'failed to install hooks' error, got: %v", err)
-		}
-	})
-}
-
-// Test hooks.Uninstall error path
-func TestInitWithUninstallError(t *testing.T) {
-	dir, cleanup := setupTestEnv(t)
-	defer cleanup()
-
-	// First install hooks
-	initUninstall = false
-	runInit(initCmd, []string{})
-
-	// Remove permissions on hooks directory
-	hooksDir := filepath.Join(dir, ".git", "hooks")
-	hookFile := filepath.Join(hooksDir, "post-checkout")
-	os.Chmod(hookFile, 0000)
-	os.Chmod(hooksDir, 0000)
-	defer func() {
-		os.Chmod(hooksDir, 0755)
-		os.Chmod(hookFile, 0644)
-	}()
-
-	t.Run("init uninstall with error", func(t *testing.T) {
-		initUninstall = true
-
-		err := runInit(initCmd, []string{})
-		if err == nil {
-			// On some systems this might work anyway
-			t.Log("uninstall succeeded despite permission restrictions")
-		} else if !strings.Contains(err.Error(), "failed to uninstall") {
-			t.Logf("got error: %v", err)
-		}
-	})
-}
+// TestInitWithUninstallError removed - init command was removed in v0.1.0
 
 // Test manifest.Remove returns false (edge case that shouldn't happen in practice)
 func TestRemoveManifestRemoveError(t *testing.T) {
@@ -2078,8 +1768,6 @@ func TestListDirHasChangesError(t *testing.T) {
 	os.Remove(filepath.Join(subPath, ".git", "HEAD"))
 
 	t.Run("listDir with HasChanges error", func(t *testing.T) {
-		listRecursive = false
-
 		output := captureOutput(func() {
 			runList(listCmd, []string{})
 		})
@@ -2334,7 +2022,7 @@ func TestListDirRecursiveError(t *testing.T) {
 
 	// Create nested manifest that triggers error
 	nestedDir := filepath.Join(dir, "packages/recursive-err")
-	nestedManifest := filepath.Join(nestedDir, ".subclones.yaml")
+	nestedManifest := filepath.Join(nestedDir, ".gitsubs")
 	// Write manifest that will cause an error in listDir
 	os.WriteFile(nestedManifest, []byte("invalid: [[["), 0644)
 
@@ -2464,8 +2152,6 @@ func TestListDirHasChangesReturnsError(t *testing.T) {
 	defer os.Rename(parentGitBackup, parentGit)
 
 	t.Run("listDir shows error status", func(t *testing.T) {
-		listRecursive = false
-
 		// Need to call listDir directly since runList requires git repo root
 		output := captureOutput(func() {
 			listDir(dir, false, 0)

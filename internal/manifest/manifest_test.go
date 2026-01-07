@@ -19,7 +19,7 @@ func TestLoadEmpty(t *testing.T) {
 
 func TestLoadReadError(t *testing.T) {
 	dir := t.TempDir()
-	// Create .subclones.yaml as a directory - ReadFile will fail with non-NotExist error
+	// Create .gitsubs as a directory - ReadFile will fail with non-NotExist error
 	manifestPath := filepath.Join(dir, FileName)
 	os.MkdirAll(manifestPath, 0755)
 
@@ -64,7 +64,7 @@ func TestSaveAndLoad(t *testing.T) {
 
 	m := &Manifest{
 		Subclones: []Subclone{
-			{Path: "packages/sub-a", Repo: "https://github.com/test/sub-a.git", Branch: "main"},
+			{Path: "packages/sub-a", Repo: "https://github.com/test/sub-a.git"},
 			{Path: "libs/sub-b", Repo: "https://github.com/test/sub-b.git"},
 		},
 	}
@@ -93,15 +93,13 @@ func TestSaveAndLoad(t *testing.T) {
 		t.Errorf("expected path packages/sub-a, got %s", loaded.Subclones[0].Path)
 	}
 
-	if loaded.Subclones[0].Branch != "main" {
-		t.Errorf("expected branch main, got %s", loaded.Subclones[0].Branch)
-	}
+	// Branch field removed in v0.1.0
 }
 
 func TestAddAndRemove(t *testing.T) {
 	m := &Manifest{Subclones: []Subclone{}}
 
-	m.Add("test/path", "https://github.com/test/repo.git", "develop")
+	m.Add("test/path", "https://github.com/test/repo.git")
 
 	if len(m.Subclones) != 1 {
 		t.Errorf("expected 1 subclone, got %d", len(m.Subclones))
@@ -109,6 +107,15 @@ func TestAddAndRemove(t *testing.T) {
 
 	if !m.Exists("test/path") {
 		t.Error("expected subclone to exist")
+	}
+
+	// Verify the subclone was added correctly
+	sc := m.Find("test/path")
+	if sc == nil {
+		t.Fatal("expected to find subclone")
+	}
+	if sc.Repo != "https://github.com/test/repo.git" {
+		t.Errorf("expected repo https://github.com/test/repo.git, got %s", sc.Repo)
 	}
 
 	if !m.Remove("test/path") {
@@ -147,7 +154,7 @@ func TestFind(t *testing.T) {
 
 func TestSaveWriteError(t *testing.T) {
 	dir := t.TempDir()
-	// Create .subclones.yaml as a directory to prevent WriteFile
+	// Create .gitsubs as a directory to prevent WriteFile
 	manifestPath := filepath.Join(dir, FileName)
 	os.MkdirAll(manifestPath, 0755)
 

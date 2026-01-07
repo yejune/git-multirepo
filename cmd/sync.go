@@ -7,15 +7,15 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/yejune/git-subclone/internal/git"
-	"github.com/yejune/git-subclone/internal/hooks"
-	"github.com/yejune/git-subclone/internal/manifest"
+	"github.com/yejune/git-sub/internal/git"
+	"github.com/yejune/git-sub/internal/hooks"
+	"github.com/yejune/git-sub/internal/manifest"
 )
 
 var syncCmd = &cobra.Command{
 	Use:   "sync",
 	Short: "Apply ignore and skip-worktree settings",
-	Long: `Apply configuration from .subclones.yaml:
+	Long: `Apply configuration from .gitsubs:
   - Install git hooks if not present
   - Apply ignore patterns to .gitignore
   - Apply skip-worktree to specified files
@@ -38,7 +38,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("not in a git repository: %w", err)
 	}
 
-	fmt.Println("Syncing configuration...\n")
+	fmt.Println("Syncing configuration...")
 
 	// 1. Auto-install hooks
 	if !hooks.IsInstalled(repoRoot) {
@@ -54,11 +54,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 	m, err := manifest.Load(repoRoot)
 	if err != nil {
 		return fmt.Errorf("failed to load manifest: %w", err)
-	}
-
-	if len(m.Subclones) == 0 {
-		fmt.Println("No subclones registered.")
-		return nil
 	}
 
 	// 3. Apply ignore patterns to mother repo
@@ -79,6 +74,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 		} else {
 			fmt.Printf("  ✓ Applied to %d files\n", len(m.Skip))
 		}
+	}
+
+	if len(m.Subclones) == 0 {
+		fmt.Println("\nNo subclones registered.")
+		return nil
 	}
 
 	// 5. Process each subclone

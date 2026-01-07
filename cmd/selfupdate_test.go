@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yejune/git-subclone/internal/update"
+	"github.com/yejune/git-sub/internal/update"
 )
 
 // MockHTTPClient is a mock HTTP client for testing

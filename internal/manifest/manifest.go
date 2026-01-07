@@ -1,14 +1,16 @@
-// Package manifest handles .subclones.yaml file operations
+// Package manifest handles .gitsubs file operations
 package manifest
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
-const FileName = ".subclones.yaml"
+const FileName = ".gitsubs"
 
 // marshalFunc is the function used to marshal YAML (allows testing)
 var marshalFunc = yaml.Marshal
@@ -20,7 +22,7 @@ type Subclone struct {
 	Skip []string `yaml:"skip,omitempty"`
 }
 
-// Manifest represents the .subclones.yaml file structure
+// Manifest represents the .gitsubs file structure
 type Manifest struct {
 	Skip      []string   `yaml:"skip,omitempty"`
 	Ignore    []string   `yaml:"ignore,omitempty"`
@@ -57,7 +59,31 @@ func Save(dir string, m *Manifest) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+
+	// Add blank line between subclones for better readability
+	lines := string(data)
+	// Insert blank line before each "- path:" except the first
+	buf := bytes.NewBuffer(nil)
+	inSubclones := false
+	firstSubclone := true
+
+	for _, line := range strings.Split(lines, "\n") {
+		if strings.HasPrefix(line, "subclones:") {
+			inSubclones = true
+		}
+
+		if inSubclones && strings.HasPrefix(line, "  - path:") {
+			if !firstSubclone {
+				buf.WriteString("\n")
+			}
+			firstSubclone = false
+		}
+
+		buf.WriteString(line)
+		buf.WriteString("\n")
+	}
+
+	return os.WriteFile(path, buf.Bytes(), 0644)
 }
 
 // Add adds a new subclone to the manifest

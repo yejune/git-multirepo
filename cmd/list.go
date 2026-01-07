@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/yejune/git-subclone/internal/git"
-	"github.com/yejune/git-subclone/internal/manifest"
+	"github.com/yejune/git-sub/internal/git"
+	"github.com/yejune/git-sub/internal/manifest"
 )
 
 var listRecursive bool
@@ -16,7 +16,7 @@ var listCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
 	Short:   "List all registered subclones",
-	Long: `Display all subclones registered in .subclones.yaml.
+	Long: `Display all subclones registered in .gitsubs.
 
 Shows path, repository URL, branch, and current status.
 

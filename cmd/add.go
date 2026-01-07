@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/yejune/git-subclone/internal/git"
-	"github.com/yejune/git-subclone/internal/manifest"
+	"github.com/yejune/git-sub/internal/git"
+	"github.com/yejune/git-sub/internal/manifest"
 )
 
 var addBranch string
@@ -15,7 +15,7 @@ var addBranch string
 var addCmd = &cobra.Command{
 	Use:   "add <repo> <path>",
 	Short: "Add a new subclone",
-	Long: `Clone a repository as a subclone and register it in .subclones.yaml.
+	Long: `Clone a repository as a subclone and register it in .gitsubs.
 
 The subclone's source files will be tracked by the parent repo,
 but its .git directory will be ignored (added to .gitignore).

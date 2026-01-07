@@ -1,9 +1,9 @@
-# git-subclone
+# git-sub
 
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/yejune/git-subclone?include_prereleases)](https://github.com/yejune/git-subclone/releases)
-[![CI](https://github.com/yejune/git-subclone/actions/workflows/ci.yml/badge.svg)](https://github.com/yejune/git-subclone/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/yejune/git-sub?include_prereleases)](https://github.com/yejune/git-sub/releases)
+[![CI](https://github.com/yejune/git-sub/actions/workflows/ci.yml/badge.svg)](https://github.com/yejune/git-sub/actions/workflows/ci.yml)
 
 Manage nested git repositories with independent push capability.
 
@@ -28,7 +28,7 @@ Git subtrees solve some problems but create others:
 | Simple clone | `--recursive` required | Yes | Yes (with hook) |
 | Intuitive push | Yes | Special command | Yes |
 | Files in parent repo | Pointer only | Yes | Yes |
-| Clear manifest | `.gitmodules` | No | `.subclones.yaml` |
+| Clear manifest | `.gitmodules` | No | `.gitsubs` |
 | Independent repository | Yes | No | Yes |
 | Easy to understand | No | No | Yes |
 
@@ -41,11 +41,11 @@ Git subtrees solve some problems but create others:
 
 ## Features
 
-- **Clone as subclone**: `git subclone <url>` - just like `git clone`
+- **Clone as subclone**: `git-sub <url>` - just like `git clone`
 - **Sync all**: Pull/clone all subclones with one command
 - **Direct push**: Push changes directly to subclone's remote
 - **Auto-sync hook**: Optionally sync after checkout
-- **Self-update**: Update the binary with `git subclone selfupdate`
+- **Self-update**: Update the binary with `git-sub selfupdate`
 - **Recursive sync**: Sync subclones within subclones
 
 ## Installation
@@ -53,135 +53,135 @@ Git subtrees solve some problems but create others:
 ### Using Homebrew (macOS/Linux)
 
 ```bash
-brew install yejune/tap/git-subclone
+brew install yejune/tap/git-sub
 ```
 
 ### Using curl
 
 ```bash
 # macOS (Apple Silicon)
-curl -L https://github.com/yejune/git-subclone/releases/latest/download/git-subclone-darwin-arm64 -o /usr/local/bin/git-subclone
-chmod +x /usr/local/bin/git-subclone
+curl -L https://github.com/yejune/git-sub/releases/latest/download/git-sub-darwin-arm64 -o /usr/local/bin/git-sub
+chmod +x /usr/local/bin/git-sub
 
 # macOS (Intel)
-curl -L https://github.com/yejune/git-subclone/releases/latest/download/git-subclone-darwin-amd64 -o /usr/local/bin/git-subclone
-chmod +x /usr/local/bin/git-subclone
+curl -L https://github.com/yejune/git-sub/releases/latest/download/git-sub-darwin-amd64 -o /usr/local/bin/git-sub
+chmod +x /usr/local/bin/git-sub
 
 # Linux (x86_64)
-curl -L https://github.com/yejune/git-subclone/releases/latest/download/git-subclone-linux-amd64 -o /usr/local/bin/git-subclone
-chmod +x /usr/local/bin/git-subclone
+curl -L https://github.com/yejune/git-sub/releases/latest/download/git-sub-linux-amd64 -o /usr/local/bin/git-sub
+chmod +x /usr/local/bin/git-sub
 ```
 
 ### Using Go
 
 ```bash
-go install github.com/yejune/git-subclone@latest
+go install github.com/yejune/git-sub@latest
 ```
 
 ### From Source
 
 ```bash
-git clone https://github.com/yejune/git-subclone.git
-cd git-subclone
-go build -o git-subclone
-sudo mv git-subclone /usr/local/bin/
+git clone https://github.com/yejune/git-sub.git
+cd git-sub
+go build -o git-sub
+sudo mv git-sub /usr/local/bin/
 ```
 
 ## Quick Start
 
 ```bash
 # Clone a repository as subclone
-git subclone https://github.com/user/repo.git
+git-sub https://github.com/user/repo.git
 
 # With custom path
-git subclone https://github.com/user/repo.git packages/repo
+git-sub https://github.com/user/repo.git packages/repo
 
 # With specific branch
-git subclone -b develop https://github.com/user/repo.git
+git-sub -b develop https://github.com/user/repo.git
 
 # SSH format
-git subclone git@github.com:user/repo.git
+git-sub git@github.com:user/repo.git
 ```
 
 ## Commands
 
-### `git subclone [url] [path]`
+### `git-sub [url] [path]`
 
 Clone a repository as a subclone (default command).
 
 ```bash
-git subclone https://github.com/user/lib.git              # -> ./lib/
-git subclone https://github.com/user/lib.git packages/lib # -> ./packages/lib/
-git subclone -b develop git@github.com:user/lib.git       # specific branch
+git-sub https://github.com/user/lib.git              # -> ./lib/
+git-sub https://github.com/user/lib.git packages/lib # -> ./packages/lib/
+git-sub -b develop git@github.com:user/lib.git       # specific branch
 ```
 
-### `git subclone add [url] [path]`
+### `git-sub add [url] [path]`
 
 Add a new subclone (same as default command).
 
 ```bash
-git subclone add https://github.com/user/lib.git packages/lib
-git subclone add git@github.com:user/lib.git packages/lib -b develop
+git-sub add https://github.com/user/lib.git packages/lib
+git-sub add git@github.com:user/lib.git packages/lib -b develop
 ```
 
-### `git subclone sync`
+### `git-sub sync`
 
 Clone or pull all registered subclones.
 
 ```bash
-git subclone sync             # sync all subclones
-git subclone sync --recursive # recursively sync nested subclones
+git-sub sync             # sync all subclones
+git-sub sync --recursive # recursively sync nested subclones
 ```
 
-### `git subclone list`
+### `git-sub list`
 
 List all registered subclones.
 
 ```bash
-git subclone list    # list subclones
-git subclone ls      # alias
+git-sub list    # list subclones
+git-sub ls      # alias
 ```
 
-### `git subclone status`
+### `git-sub status`
 
 Show detailed status of all subclones.
 
 ```bash
-git subclone status  # shows branch, commits ahead/behind, modified files
+git-sub status  # shows branch, commits ahead/behind, modified files
 ```
 
-### `git subclone push [path]`
+### `git-sub push [path]`
 
 Push changes in subclones.
 
 ```bash
-git subclone push packages/lib  # push specific subclone
-git subclone push --all         # push all modified subclones
+git-sub push packages/lib  # push specific subclone
+git-sub push --all         # push all modified subclones
 ```
 
-### `git subclone remove [path]`
+### `git-sub remove [path]`
 
 Remove a subclone.
 
 ```bash
-git subclone remove packages/lib              # remove and delete files
-git subclone rm packages/lib --keep-files     # remove from manifest, keep files
+git-sub remove packages/lib              # remove and delete files
+git-sub rm packages/lib --keep-files     # remove from manifest, keep files
 ```
 
-### `git subclone init`
+### `git-sub init`
 
 Install git hooks for auto-sync.
 
 ```bash
-git subclone init  # installs post-checkout hook to auto-sync
+git-sub init  # installs post-checkout hook to auto-sync
 ```
 
-### `git subclone selfupdate`
+### `git-sub selfupdate`
 
-Update git-subclone to the latest version.
+Update git-sub to the latest version.
 
 ```bash
-git subclone selfupdate  # downloads and installs latest release
+git-sub selfupdate  # downloads and installs latest release
 ```
 
 ## How It Works
@@ -191,7 +191,7 @@ git subclone selfupdate  # downloads and installs latest release
 ```
 my-project/
 ├── .git/                    <- Parent project git
-├── .subclones.yaml          <- Subclone manifest (tracked by parent)
+├── .gitsubs          <- Subclone manifest (tracked by parent)
 ├── .gitignore               <- Contains "packages/lib/.git/"
 ├── src/
 │   └── main.go
@@ -206,7 +206,7 @@ my-project/
 1. **Independent Git**: Each subclone has its own `.git` directory
 2. **Source Tracking**: Parent tracks subclone's source files (not `.git`)
 3. **Direct Push**: `cd packages/lib && git push` works as expected
-4. **Manifest File**: `.subclones.yaml` records all subclones
+4. **Manifest File**: `.gitsubs` records all subclones
 
 ### Manifest Format
 

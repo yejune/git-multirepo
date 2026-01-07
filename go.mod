@@ -1,4 +1,4 @@
-module github.com/yejune/git-subclone
+module github.com/yejune/git-sub
 
 go 1.21
 

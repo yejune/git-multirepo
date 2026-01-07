@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/yejune/git-subclone/internal/git"
-	"github.com/yejune/git-subclone/internal/manifest"
+	"github.com/yejune/git-sub/internal/git"
+	"github.com/yejune/git-sub/internal/manifest"
 )
 
 var resetCmd = &cobra.Command{
@@ -15,11 +15,11 @@ var resetCmd = &cobra.Command{
 	Long: `Reset both ignore patterns and skip-worktree files.
 
 This will:
-  - Remove git-subclone section from .gitignore
+  - Remove git-sub section from .gitignore
   - Remove all skip-worktree flags
-  - Reapply from .subclones.yaml
+  - Reapply from .gitsubs
 
-NOTE: This does NOT modify .subclones.yaml
+NOTE: This does NOT modify .gitsubs
 
 Examples:
   git-subclone reset           # Reset both
@@ -76,7 +76,7 @@ func runResetIgnore(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Println("✓ Reset ignore patterns from .subclones.yaml")
+	fmt.Println("✓ Reset ignore patterns from .gitsubs")
 	return nil
 }
 
@@ -127,6 +127,6 @@ func runResetSkip(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Println("✓ Reset skip-worktree from .subclones.yaml")
+	fmt.Println("✓ Reset skip-worktree from .gitsubs")
 	return nil
 }

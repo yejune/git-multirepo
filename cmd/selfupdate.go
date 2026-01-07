@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/yejune/git-subclone/internal/update"
+	"github.com/yejune/git-sub/internal/update"
 )
 
 var selfupdateCmd = &cobra.Command{

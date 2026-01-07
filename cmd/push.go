@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/yejune/git-subclone/internal/git"
-	"github.com/yejune/git-subclone/internal/manifest"
+	"github.com/yejune/git-sub/internal/git"
+	"github.com/yejune/git-sub/internal/manifest"
 )
 
 var pushAll bool

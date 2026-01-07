@@ -1,30 +1,30 @@
-name: git-subclone
+name: git-sub
 language: go
 description: Manage nested git repositories with independent push capability
-homepage: https://github.com/yejune/git-subclone
+homepage: https://github.com/yejune/git-sub
 license: MIT
 github:
     user: yejune
-    repo: git-subclone
+    repo: git-sub
     tap_repo: homebrew-tap
 build:
-    command: go build -ldflags "-X github.com/yejune/git-subclone/cmd.Version={{.Version}}" -o build/{{.Name}} .
+    command: go build -ldflags "-X github.com/yejune/git-sub/cmd.Version={{.Version}}" -o build/{{.Name}} .
 formula:
     install: |-
-        ldflags = "-X github.com/yejune/git-subclone/cmd.Version=#{version}"
-        system "go", "build", "-ldflags", ldflags, "-o", "git-subclone", "."
-        bin.install "git-subclone"
-    test: assert_match "version", shell_output("#{bin}/git-subclone --version")
+        ldflags = "-X github.com/yejune/git-sub/cmd.Version=#{version}"
+        system "go", "build", "-ldflags", ldflags, "-o", "git-sub", "."
+        bin.install "git-sub"
+    test: assert_match "version", shell_output("#{bin}/git-sub --version")
     caveats: |-
-        git-subclone has been installed!
+        git-sub has been installed!
 
         Quick Start:
-          git subclone https://github.com/user/repo.git
-          git subclone https://github.com/user/repo.git packages/repo
-          git subclone -b develop https://github.com/user/repo.git
+          git-sub https://github.com/user/repo.git
+          git-sub https://github.com/user/repo.git packages/repo
+          git-sub -b develop https://github.com/user/repo.git
 
         Commands:
-          git subclone sync      Sync all subclones
-          git subclone list      List subclones
-          git subclone push      Push subclone(s)
-          git subclone status    Show status
+          git-sub sync      Sync all subclones
+          git-sub list      List subclones
+          git-sub push      Push subclone(s)
+          git-sub status    Show status
