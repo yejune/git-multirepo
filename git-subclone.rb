@@ -1,16 +1,15 @@
 class GitSubclone < Formula
   desc "Manage nested git repositories with independent push capability"
   homepage "https://github.com/yejune/git-subclone"
-  url "https://github.com/yejune/git-subclone/archive/refs/tags/v0.0.9.tar.gz"
-  sha256 "1d2ed3996efc4b4ea80d762866eebb526e483704ab81fcc8b542bfa0ceb1d8ad"
+  url "https://github.com/yejune/git-subclone/archive/refs/tags/v0.0.10.tar.gz"
+  sha256 "36087bd885499b7c475073163e79555dbd00be968569577b9fecaee70d900bf8"
   license "MIT"
   head "https://github.com/yejune/git-subclone.git", branch: "main"
 
   depends_on "go" => :build
 
   def install
-        ldflags = "-X github.com/yejune/git-subclone/cmd.Version=#{version}"
-    system "go", "build", "-ldflags", ldflags, "-o", "git-subclone", "."
+        system "go", "build", "-o", "git-subclone", "./cmd/git-subclone"
     bin.install "git-subclone"
   end
 
