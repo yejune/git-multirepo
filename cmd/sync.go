@@ -182,6 +182,16 @@ func runSync(cmd *cobra.Command, args []string) error {
 		} else {
 			fmt.Printf("    ✓ No skip-worktree config\n")
 		}
+
+		// Install/update post-commit hook in sub
+		if !hooks.IsSubHookInstalled(fullPath) {
+			fmt.Printf("    → Installing post-commit hook\n")
+			if err := hooks.InstallSubHook(fullPath); err != nil {
+				fmt.Printf("    ⚠ Failed to install hook: %v\n", err)
+			} else {
+				fmt.Printf("    ✓ Hook installed\n")
+			}
+		}
 	}
 
 	// Save manifest if any commits were updated

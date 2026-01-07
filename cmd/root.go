@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yejune/git-sub/internal/git"
+	"github.com/yejune/git-sub/internal/hooks"
 	"github.com/yejune/git-sub/internal/manifest"
 )
 
@@ -114,6 +115,11 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	// Add .git directory to parent's .gitignore
 	if err := git.AddToGitignore(repoRoot, path); err != nil {
 		return fmt.Errorf("failed to update .gitignore: %w", err)
+	}
+
+	// Install post-commit hook in sub
+	if err := hooks.InstallSubHook(fullPath); err != nil {
+		fmt.Printf("⚠ Failed to install hook: %v\n", err)
 	}
 
 	fmt.Printf("✓ Added sub: %s\n", path)
