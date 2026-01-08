@@ -7,10 +7,12 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/yejune/git-workspace/internal/backup"
 	"github.com/yejune/git-workspace/internal/git"
 	"github.com/yejune/git-workspace/internal/hooks"
 	"github.com/yejune/git-workspace/internal/i18n"
 	"github.com/yejune/git-workspace/internal/manifest"
+	"github.com/yejune/git-workspace/internal/patch"
 )
 
 var syncCmd = &cobra.Command{
@@ -97,7 +99,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 4. Apply skip-worktree to mother repo
+	// 4. Apply skip-worktree to mother repo (deprecated, use Keep)
 	if len(m.Skip) > 0 {
 		fmt.Println(i18n.T("applying_skip_mother"))
 		if err := git.ApplySkipWorktree(repoRoot, m.Skip); err != nil {
@@ -107,14 +109,21 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// 5. Process Mother repo keep files
+	issues := 0
+	motherKeepFiles := m.Keep
+	if len(motherKeepFiles) > 0 {
+		fmt.Printf("\n%s\n", i18n.T("processing_mother_keep"))
+		processKeepFiles(repoRoot, repoRoot, motherKeepFiles, &issues)
+	}
+
 	if len(m.Subclones) == 0 {
 		fmt.Println(i18n.T("no_subclones"))
 		return nil
 	}
 
-	// 5. Process each subclone
+	// 6. Process each subclone
 	fmt.Println(i18n.T("processing_subclones"))
-	issues := 0
 
 	for _, sc := range m.Subclones {
 		fullPath := filepath.Join(repoRoot, sc.Path)
@@ -202,7 +211,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		// Apply skip-worktree for this subclone
+		// Apply skip-worktree for this subclone (deprecated, use Keep)
 		if len(sc.Skip) > 0 {
 			fmt.Printf("    %s\n", i18n.T("applying_skip_sub", len(sc.Skip)))
 			if err := git.ApplySkipWorktree(fullPath, sc.Skip); err != nil {
@@ -213,6 +222,13 @@ func runSync(cmd *cobra.Command, args []string) error {
 			}
 		} else {
 			fmt.Printf("    %s\n", i18n.T("no_skip_config"))
+		}
+
+		// Process keep files for this workspace
+		keepFiles := sc.GetKeepFiles()
+		if len(keepFiles) > 0 {
+			fmt.Printf("    %s\n", i18n.T("processing_keep_files", len(keepFiles)))
+			processKeepFiles(repoRoot, fullPath, keepFiles, &issues)
 		}
 
 		// Install/update post-commit hook in sub
@@ -325,4 +341,61 @@ func scanForSubs(repoRoot string) ([]manifest.Subclone, error) {
 	})
 
 	return subs, err
+}
+
+// processKeepFiles handles backup, patch creation, and skip-worktree for keep files
+func processKeepFiles(repoRoot, workspacePath string, keepFiles []string, issues *int) {
+	backupDir := filepath.Join(repoRoot, ".workspaces-backup")
+	patchBaseDir := filepath.Join(repoRoot, ".workspaces-patches")
+
+	for _, file := range keepFiles {
+		filePath := filepath.Join(workspacePath, file)
+
+		// Check if file exists
+		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			fmt.Printf("      %s (skip: file not found)\n", file)
+			continue
+		}
+
+		fmt.Printf("      %s\n", file)
+
+		// 1. Backup original file to backup/modified/
+		if err := backup.CreateFileBackup(filePath, backupDir); err != nil {
+			fmt.Printf("        Failed to backup file: %v\n", err)
+			*issues++
+			continue
+		}
+
+		// 2. Create patch (git diff HEAD file)
+		relPath, err := filepath.Rel(repoRoot, workspacePath)
+		if err != nil {
+			relPath = filepath.Base(workspacePath)
+		}
+		if relPath == "." {
+			relPath = ""
+		}
+
+		patchPath := filepath.Join(patchBaseDir, relPath, file+".patch")
+		if err := patch.Create(workspacePath, file, patchPath); err != nil {
+			fmt.Printf("        Failed to create patch: %v\n", err)
+			*issues++
+			continue
+		}
+
+		// 3. Backup patch to backup/patched/
+		if err := backup.CreatePatchBackup(patchPath, backupDir); err != nil {
+			fmt.Printf("        Failed to backup patch: %v\n", err)
+			*issues++
+			continue
+		}
+
+		// 4. Apply skip-worktree
+		if err := git.ApplySkipWorktree(workspacePath, []string{file}); err != nil {
+			fmt.Printf("        Failed to apply skip-worktree: %v\n", err)
+			*issues++
+			continue
+		}
+
+		fmt.Printf("        ✓ Backed up, patched, and skip-worktree applied\n")
+	}
 }

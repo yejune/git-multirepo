@@ -11,7 +11,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/yejune/git-workspace/internal/git"
 	"github.com/yejune/git-workspace/internal/i18n"
+	"github.com/yejune/git-workspace/internal/interactive"
 	"github.com/yejune/git-workspace/internal/manifest"
+	"github.com/yejune/git-workspace/internal/patch"
 )
 
 var pullCmd = &cobra.Command{
@@ -127,6 +129,23 @@ func runPull(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
+		// Fetch remote changes first
+		if err := git.Fetch(fullPath); err != nil {
+			fmt.Printf("  %s\n", i18n.T("fetch_failed"))
+			fmt.Println()
+			continue
+		}
+
+		// Handle keep files before pulling
+		keepFiles := sub.GetKeepFiles()
+		if len(keepFiles) > 0 {
+			if err := handleKeepFiles(fullPath, branch, keepFiles); err != nil {
+				fmt.Printf("  Keep file handling failed: %v\n", err)
+				fmt.Println()
+				continue
+			}
+		}
+
 		// Pull from remote
 		if err := git.Pull(fullPath); err != nil {
 			fmt.Printf("  %s\n", i18n.T("pull_failed"))
@@ -147,6 +166,99 @@ func runPull(cmd *cobra.Command, args []string) error {
 			fmt.Printf("  %s\n", i18n.T("pull_already_uptodate"))
 		}
 		fmt.Println()
+	}
+
+	return nil
+}
+
+// handleKeepFiles handles keep files with remote changes interactively
+func handleKeepFiles(wsPath, branch string, keepFiles []string) error {
+	for _, file := range keepFiles {
+		// Check if file has remote changes
+		hasChanges, err := git.HasRemoteChanges(wsPath, file, branch)
+		if err != nil {
+			return fmt.Errorf("failed to check remote changes for %s: %w", file, err)
+		}
+
+		if !hasChanges {
+			continue // No remote changes, skip
+		}
+
+		// Create temporary patch directory
+		patchDir := filepath.Join(wsPath, ".git", "git-sub", "patches")
+		if err := os.MkdirAll(patchDir, 0755); err != nil {
+			return fmt.Errorf("failed to create patch directory: %w", err)
+		}
+
+		patchPath := filepath.Join(patchDir, filepath.Base(file)+".patch")
+
+		// Interactive loop for this file
+		for {
+			choice, err := interactive.ResolveConflict(file, []string{
+				"Update origin and reapply patch (recommended)",
+				"Update origin only (discard patch)",
+				"Skip (keep current state)",
+				"Show diff",
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get user choice: %w", err)
+			}
+
+			switch choice {
+			case 0: // Update origin and reapply patch (recommended)
+				// Create patch from current local changes
+				if err := patch.Create(wsPath, file, patchPath); err != nil {
+					fmt.Printf("  ⚠ Failed to create patch: %v\n", err)
+					continue
+				}
+
+				// Reset file to remote version
+				if err := git.ResetFile(wsPath, file, branch); err != nil {
+					fmt.Printf("  ⚠ Failed to reset file: %v\n", err)
+					continue
+				}
+
+				// Apply patch
+				if err := patch.Apply(wsPath, patchPath); err != nil {
+					fmt.Printf("  ⚠ Failed to apply patch: %v\n", err)
+					fmt.Printf("  ℹ Patch saved to: %s\n", patchPath)
+					fmt.Printf("  ℹ You can apply it manually later\n")
+				} else {
+					fmt.Printf("  ✓ Updated %s and reapplied local changes\n", file)
+					// Clean up successful patch
+					os.Remove(patchPath)
+				}
+				return nil
+
+			case 1: // Update origin only (discard patch)
+				// Reset file to remote version
+				if err := git.ResetFile(wsPath, file, branch); err != nil {
+					fmt.Printf("  ⚠ Failed to reset file: %v\n", err)
+					continue
+				}
+				fmt.Printf("  ✓ Updated %s to remote version (local changes discarded)\n", file)
+				return nil
+
+			case 2: // Skip (keep current state)
+				fmt.Printf("  ⏭ Skipped %s (keeping current state)\n", file)
+				return nil
+
+			case 3: // Show diff
+				diff, err := git.GetFileDiff(wsPath, file, branch)
+				if err != nil {
+					fmt.Printf("  ⚠ Failed to get diff: %v\n", err)
+					continue
+				}
+				if err := interactive.ShowDiff(diff); err != nil {
+					fmt.Printf("  ⚠ Failed to show diff: %v\n", err)
+				}
+				// Continue loop to show menu again
+				continue
+
+			default:
+				return fmt.Errorf("invalid choice: %d", choice)
+			}
+		}
 	}
 
 	return nil

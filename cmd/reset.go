@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
@@ -106,24 +107,54 @@ func runResetSkip(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Reset each subclone
-	for _, sc := range m.Subclones {
-		fullPath := filepath.Join(repoRoot, sc.Path)
+	// Reset each workspace (subclone)
+	for _, ws := range m.GetWorkspaces() {
+		fullPath := filepath.Join(repoRoot, ws.Path)
 		if !git.IsRepo(fullPath) {
 			continue
 		}
 
-		activeSkip, err := git.ListSkipWorktree(fullPath)
-		if err == nil && len(activeSkip) > 0 {
-			if err := git.UnapplySkipWorktree(fullPath, activeSkip); err != nil {
-				fmt.Printf("⚠ Warning: failed to remove skip-worktree in %s: %v\n", sc.Path, err)
+		// Handle keep files: restore from origin but keep local modifications
+		keepFiles := ws.GetKeepFiles()
+		if len(keepFiles) > 0 {
+			// 1. Unapply skip-worktree for keep files
+			if err := git.UnapplySkipWorktree(fullPath, keepFiles); err != nil {
+				fmt.Printf("⚠ Warning: failed to unapply skip-worktree for keep files in %s: %v\n", ws.Path, err)
+			}
+
+			// 2. Restore original files from HEAD (git checkout HEAD -- file)
+			// Note: This does NOT delete .workspaces-patches/ or backup files
+			for _, file := range keepFiles {
+				cmd := exec.Command("git", "-C", fullPath, "checkout", "HEAD", "--", file)
+				if err := cmd.Run(); err != nil {
+					// File might not exist in HEAD, that's okay
+					continue
+				}
+			}
+
+			// 3. Reapply skip-worktree (patches are preserved in .workspaces-patches/)
+			if err := git.ApplySkipWorktree(fullPath, keepFiles); err != nil {
+				fmt.Printf("⚠ Warning: failed to reapply skip-worktree for keep files in %s: %v\n", ws.Path, err)
 			}
 		}
 
-		if len(sc.Skip) > 0 {
-			if err := git.ApplySkipWorktree(fullPath, sc.Skip); err != nil {
-				fmt.Printf("⚠ Warning: failed to apply skip-worktree in %s: %v\n", sc.Path, err)
+		// Handle regular skip-worktree files (deprecated)
+		activeSkip, err := git.ListSkipWorktree(fullPath)
+		if err == nil && len(activeSkip) > 0 {
+			if err := git.UnapplySkipWorktree(fullPath, activeSkip); err != nil {
+				fmt.Printf("⚠ Warning: failed to remove skip-worktree in %s: %v\n", ws.Path, err)
 			}
+		}
+
+		if len(ws.Skip) > 0 {
+			if err := git.ApplySkipWorktree(fullPath, ws.Skip); err != nil {
+				fmt.Printf("⚠ Warning: failed to apply skip-worktree in %s: %v\n", ws.Path, err)
+			}
+		}
+
+		// Pull from current branch (ignore branch setting)
+		if err := git.Pull(fullPath); err != nil {
+			fmt.Printf("⚠ Warning: failed to pull in %s: %v\n", ws.Path, err)
 		}
 	}
 

@@ -566,3 +566,41 @@ func GetSkipFileRemoteChanges(path, file string) (string, error) {
 	}
 	return string(out), nil
 }
+
+// HasRemoteChanges checks if a file has changes between HEAD and remote
+func HasRemoteChanges(path, file, branch string) (bool, error) {
+	// Check if remote branch exists
+	cmd := exec.Command("git", "-C", path, "rev-parse", "--verify", "origin/"+branch)
+	if err := cmd.Run(); err != nil {
+		return false, nil // Remote branch doesn't exist
+	}
+
+	// Check for differences
+	cmd = exec.Command("git", "-C", path, "diff", "--quiet", "HEAD", "origin/"+branch, "--", file)
+	err := cmd.Run()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+			return true, nil // Differences found
+		}
+		return false, err // Other error
+	}
+	return false, nil // No differences
+}
+
+// GetFileDiff returns the diff of a file between HEAD and remote
+func GetFileDiff(path, file, branch string) (string, error) {
+	cmd := exec.Command("git", "-C", path, "diff", "HEAD", "origin/"+branch, "--", file)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+// ResetFile resets a file to match remote version
+func ResetFile(path, file, branch string) error {
+	cmd := exec.Command("git", "-C", path, "checkout", "origin/"+branch, "--", file)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
