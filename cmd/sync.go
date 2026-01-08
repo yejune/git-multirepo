@@ -16,7 +16,7 @@ import (
 var syncCmd = &cobra.Command{
 	Use:   "sync",
 	Short: "Clone missing subs and apply configurations",
-	Long: `Sync all subs from .gitsubs manifest:
+	Long: `Sync all subs from .workspaces manifest:
   - Clone missing subs automatically
   - Install git hooks if not present
   - Apply ignore patterns to .gitignore
@@ -170,7 +170,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		// Auto-update commit hash in .gitsubs
+		// Auto-update commit hash in .workspaces
 		commit, err := git.GetCurrentCommit(fullPath)
 		if err == nil && commit != sc.Commit {
 			// Check if pushed
@@ -180,7 +180,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 					fmt.Printf("    %s\n", i18n.T("has_unpushed", commit[:7]))
 					fmt.Printf("      %s\n", i18n.T("push_first", sc.Path))
 				} else {
-					// Update .gitsubs with pushed commit
+					// Update .workspaces with pushed commit
 					oldCommit := "none"
 					if sc.Commit != "" {
 						oldCommit = sc.Commit[:7]

@@ -19,7 +19,7 @@ func TestLoadEmpty(t *testing.T) {
 
 func TestLoadReadError(t *testing.T) {
 	dir := t.TempDir()
-	// Create .gitsubs as a directory - ReadFile will fail with non-NotExist error
+	// Create .workspaces as a directory - ReadFile will fail with non-NotExist error
 	manifestPath := filepath.Join(dir, FileName)
 	os.MkdirAll(manifestPath, 0755)
 
@@ -154,7 +154,7 @@ func TestFind(t *testing.T) {
 
 func TestSaveWriteError(t *testing.T) {
 	dir := t.TempDir()
-	// Create .gitsubs as a directory to prevent WriteFile
+	// Create .workspaces as a directory to prevent WriteFile
 	manifestPath := filepath.Join(dir, FileName)
 	os.MkdirAll(manifestPath, 0755)
 

@@ -1,4 +1,4 @@
-// Package manifest handles .gitsubs file operations
+// Package manifest handles .workspaces file operations
 package manifest
 
 import (
@@ -10,26 +10,32 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const FileName = ".gitsubs"
+const FileName = ".workspaces"
 
 // marshalFunc is the function used to marshal YAML (allows testing)
 var marshalFunc = yaml.Marshal
 
-// Subclone represents a single subclone entry
-type Subclone struct {
+// WorkspaceEntry represents a single workspace entry (subclone or mother repo)
+type WorkspaceEntry struct {
 	Path   string   `yaml:"path"`
 	Repo   string   `yaml:"repo"`
 	Branch string   `yaml:"branch,omitempty"`
 	Commit string   `yaml:"commit,omitempty"`
-	Skip   []string `yaml:"skip,omitempty"`
+	Keep   []string `yaml:"keep,omitempty"`
+	Skip   []string `yaml:"skip,omitempty"` // Deprecated: use Keep instead
 }
 
-// Manifest represents the .gitsubs file structure
+// Subclone is an alias for backward compatibility
+type Subclone = WorkspaceEntry
+
+// Manifest represents the .workspaces file structure
 type Manifest struct {
-	Language  string     `yaml:"language,omitempty"`
-	Skip      []string   `yaml:"skip,omitempty"`
-	Ignore    []string   `yaml:"ignore,omitempty"`
-	Subclones []Subclone `yaml:"subclones"`
+	Language   string           `yaml:"language,omitempty"`
+	Skip       []string         `yaml:"skip,omitempty"`   // Deprecated: use Keep instead
+	Keep       []string         `yaml:"keep,omitempty"`   // Mother repo: files to keep
+	Ignore     []string         `yaml:"ignore,omitempty"` // Mother repo: files to ignore (gitignore-style)
+	Workspaces []WorkspaceEntry `yaml:"workspaces,omitempty"`
+	Subclones  []WorkspaceEntry `yaml:"subclones,omitempty"` // Deprecated: use Workspaces instead
 }
 
 // Load reads the manifest from the given directory
@@ -38,7 +44,10 @@ func Load(dir string) (*Manifest, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &Manifest{Subclones: []Subclone{}}, nil
+			return &Manifest{
+				Workspaces: []WorkspaceEntry{},
+				Subclones:  []WorkspaceEntry{},
+			}, nil
 		}
 		return nil, err
 	}
@@ -48,8 +57,12 @@ func Load(dir string) (*Manifest, error) {
 		return nil, err
 	}
 
+	// Initialize empty slices if nil for backward compatibility
+	if m.Workspaces == nil {
+		m.Workspaces = []WorkspaceEntry{}
+	}
 	if m.Subclones == nil {
-		m.Subclones = []Subclone{}
+		m.Subclones = []WorkspaceEntry{}
 	}
 
 	return &m, nil
@@ -63,23 +76,25 @@ func Save(dir string, m *Manifest) error {
 		return err
 	}
 
-	// Add blank line between subclones for better readability
+	// Add blank line between workspaces/subclones for better readability
 	lines := string(data)
 	// Insert blank line before each "- path:" except the first
 	buf := bytes.NewBuffer(nil)
-	inSubclones := false
-	firstSubclone := true
+	inWorkspaces := false
+	firstEntry := true
 
 	for _, line := range strings.Split(lines, "\n") {
-		if strings.HasPrefix(line, "subclones:") {
-			inSubclones = true
+		// Detect both "workspaces:" and "subclones:" for backward compatibility
+		if strings.HasPrefix(line, "workspaces:") || strings.HasPrefix(line, "subclones:") {
+			inWorkspaces = true
+			firstEntry = true
 		}
 
-		if inSubclones && strings.HasPrefix(line, "  - path:") {
-			if !firstSubclone {
+		if inWorkspaces && strings.HasPrefix(line, "  - path:") {
+			if !firstEntry {
 				buf.WriteString("\n")
 			}
-			firstSubclone = false
+			firstEntry = false
 		}
 
 		buf.WriteString(line)
@@ -140,4 +155,20 @@ func (m *Manifest) GetLanguage() string {
 		return "en"
 	}
 	return m.Language
+}
+
+// GetWorkspaces returns workspaces, falling back to subclones for backward compatibility
+func (m *Manifest) GetWorkspaces() []WorkspaceEntry {
+	if len(m.Workspaces) > 0 {
+		return m.Workspaces
+	}
+	return m.Subclones
+}
+
+// GetKeepFiles returns the Keep list for a WorkspaceEntry, falling back to Skip for backward compatibility
+func (w *WorkspaceEntry) GetKeepFiles() []string {
+	if len(w.Keep) > 0 {
+		return w.Keep
+	}
+	return w.Skip
 }

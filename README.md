@@ -28,7 +28,7 @@ Git subtrees solve some problems but create others:
 | Simple clone | `--recursive` required | Yes | Yes (with hook) |
 | Intuitive push | Yes | Special command | Yes |
 | Files in parent repo | Pointer only | Yes | Yes |
-| Clear manifest | `.gitmodules` | No | `.gitsubs` |
+| Clear manifest | `.gitmodules` | No | `.workspaces` |
 | Independent repository | Yes | No | Yes |
 | Easy to understand | No | No | Yes |
 
@@ -126,11 +126,11 @@ git workspace add git@github.com:user/lib.git packages/lib -b develop
 
 ### `git workspace sync`
 
-Auto-discover subs or sync from .gitsubs. Has two modes:
+Auto-discover subs or sync from .workspaces. Has two modes:
 
-**Mode 1: Discovery Mode** (no .gitsubs)
+**Mode 1: Discovery Mode** (no .workspaces)
 ```bash
-# Situation: .gitsubs doesn't exist
+# Situation: .workspaces doesn't exist
 packages/lib/.git/      # existing sub
 packages/utils/.git/    # existing sub
 
@@ -138,14 +138,14 @@ git workspace sync
 # → Recursively scans directories
 # → Auto-detects .git folders
 # → Extracts remote, branch, commit
-# → Creates .gitsubs automatically
+# → Creates .workspaces automatically
 ```
 
-**Mode 2: Sync Mode** (has .gitsubs)
+**Mode 2: Sync Mode** (has .workspaces)
 ```bash
-# Situation: .gitsubs exists
+# Situation: .workspaces exists
 git workspace sync
-# → Reads .gitsubs
+# → Reads .workspaces
 # → Restores missing .git directories
 # → Installs/updates hooks
 # → Updates commit hashes if pushed
@@ -153,7 +153,7 @@ git workspace sync
 
 **Use Cases:**
 - Migrating existing project to git-sub
-- Recovering from deleted .gitsubs
+- Recovering from deleted .workspaces
 - First-time setup: just clone and run sync
 
 ### `git workspace list`
@@ -205,7 +205,7 @@ git workspace selfupdate  # downloads and installs latest release
 ```
 my-project/
 ├── .git/                    <- Parent project git
-├── .gitsubs                 <- Sub manifest (tracked by parent)
+├── .workspaces              <- Sub manifest (tracked by parent)
 ├── .gitignore               <- Contains "packages/lib/.git/"
 ├── src/
 │   └── main.go
@@ -220,7 +220,7 @@ my-project/
 1. **Independent Git**: Each sub has its own `.git` directory (local only)
 2. **Source Tracking**: Parent tracks sub's source files (not `.git`)
 3. **Direct Push**: `cd packages/lib && git push` works as expected
-4. **Manifest File**: `.gitsubs` records all subs for recreation
+4. **Manifest File**: `.workspaces` records all subs for recreation
 
 ### Workflow
 
@@ -230,11 +230,11 @@ git workspace clone https://github.com/user/lib.git packages/lib
 # Creates: packages/lib/.git/ (local)
 # Ignores: packages/lib/.git/ → .gitignore
 # Tracks: packages/lib/*.go → parent repo
-# Records: path, repo, commit hash → .gitsubs
+# Records: path, repo, commit hash → .workspaces
 
 git add .
 git commit -m "Add lib sub"
-git push  # Pushes: source files + .gitsubs (NOT .git)
+git push  # Pushes: source files + .workspaces (NOT .git)
 ```
 
 **Developer A updates sub:**
@@ -244,7 +244,7 @@ git commit && git push  # ← Must push to remote!
 
 cd ../..
 git add packages/lib/    # Stage updated source
-git workspace sync             # ← Auto-updates .gitsubs with new commit!
+git workspace sync             # ← Auto-updates .workspaces with new commit!
 git commit -m "Update lib"
 git push
 ```
@@ -252,11 +252,11 @@ git push
 **Developer B clones:**
 ```bash
 git clone <parent-repo>
-# Gets: .gitsubs + source files
+# Gets: .workspaces + source files
 # Missing: packages/lib/.git/
 
 git workspace sync  # or use post-checkout hook
-# Reads: .gitsubs commit hash
+# Reads: .workspaces commit hash
 # Restores: .git at exact commit
 # Now: cd packages/lib && git push works!
 ```
@@ -270,6 +270,7 @@ git workspace sync  # or use post-checkout hook
 ### Manifest Format
 
 ```yaml
+# .workspaces (new filename)
 workspaces:
   - path: packages/lib
     repo: https://github.com/user/lib.git

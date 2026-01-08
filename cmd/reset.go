@@ -17,9 +17,9 @@ var resetCmd = &cobra.Command{
 This will:
   - Remove git-sub section from .gitignore
   - Remove all skip-worktree flags
-  - Reapply from .gitsubs
+  - Reapply from .workspaces
 
-NOTE: This does NOT modify .gitsubs
+NOTE: This does NOT modify .workspaces
 
 Examples:
   git sub reset           # Reset both
@@ -76,7 +76,7 @@ func runResetIgnore(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Println("✓ Reset ignore patterns from .gitsubs")
+	fmt.Println("✓ Reset ignore patterns from .workspaces")
 	return nil
 }
 
@@ -127,6 +127,6 @@ func runResetSkip(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Println("✓ Reset skip-worktree from .gitsubs")
+	fmt.Println("✓ Reset skip-worktree from .workspaces")
 	return nil
 }

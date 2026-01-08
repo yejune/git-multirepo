@@ -16,7 +16,7 @@ var addBranch string
 var addCmd = &cobra.Command{
 	Use:   "add <repo> <path>",
 	Short: "Add a new sub",
-	Long: `Clone a repository as a sub and register it in .gitsubs.
+	Long: `Clone a repository as a sub and register it in .workspaces.
 
 The sub's source files will be tracked by the parent repo,
 but its .git directory will be ignored (added to .gitignore).

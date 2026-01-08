@@ -16,7 +16,7 @@ var listCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
 	Short:   "List all registered subs",
-	Long: `Display all subs registered in .gitsubs.
+	Long: `Display all subs registered in .workspaces.
 
 Shows path, repository URL, branch, and current status.
 

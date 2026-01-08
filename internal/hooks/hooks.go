@@ -17,14 +17,14 @@ fi
 
 const postCommitHook = `#!/bin/sh
 # git-sub post-commit hook for sub repositories
-# Automatically updates parent's .gitsubs after commit
+# Automatically updates parent's .workspaces after commit
 
-# Find parent repository (look for .gitsubs)
+# Find parent repository (look for .workspaces)
 find_parent() {
     local dir="$1"
     while [ "$dir" != "/" ] && [ "$dir" != "." ]; do
         dir=$(dirname "$dir")
-        if [ -f "$dir/.gitsubs" ]; then
+        if [ -f "$dir/.workspaces" ]; then
             echo "$dir"
             return 0
         fi
@@ -58,7 +58,7 @@ if [ -z "$SUB_PATH" ]; then
     exit 0
 fi
 
-# Update parent's .gitsubs (only if pushed)
+# Update parent's .workspaces (only if pushed)
 cd "$PARENT_ROOT" && git-sub sync --update-manifest-only --quiet 2>/dev/null || true
 `
 
