@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/yejune/git-sub/internal/git"
-	"github.com/yejune/git-sub/internal/hooks"
-	"github.com/yejune/git-sub/internal/manifest"
+	"github.com/yejune/git-workspace/internal/git"
+	"github.com/yejune/git-workspace/internal/hooks"
+	"github.com/yejune/git-workspace/internal/manifest"
 )
 
 var addBranch string

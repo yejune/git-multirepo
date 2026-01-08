@@ -1,4 +1,4 @@
-// Package cmd implements the CLI commands for git-sub
+// Package cmd implements the CLI commands for git-workspace
 package cmd
 
 import (
@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/yejune/git-sub/internal/git"
-	"github.com/yejune/git-sub/internal/hooks"
-	"github.com/yejune/git-sub/internal/manifest"
+	"github.com/yejune/git-workspace/internal/git"
+	"github.com/yejune/git-workspace/internal/hooks"
+	"github.com/yejune/git-workspace/internal/manifest"
 )
 
 var (
@@ -22,22 +22,22 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "git-sub [url] [path]",
+	Use:   "git-workspace [url] [path]",
 	Short: "Manage nested git repositories with independent push capability",
-	Long: `git-sub manages nested git repositories within a parent project.
+	Long: `git-workspace manages nested git repositories within a parent project.
 
-Each sub maintains its own .git directory and can push to its own remote,
+Each workspace maintains its own .git directory and can push to its own remote,
 while the parent project tracks the source files (but not .git).
 
 Quick usage:
-  git sub clone https://github.com/user/repo.git           # Clone to ./repo
-  git sub clone https://github.com/user/repo.git lib/repo  # Clone to lib/repo
-  git sub clone -b develop https://github.com/user/repo.git
+  git workspace clone https://github.com/user/repo.git           # Clone to ./repo
+  git workspace clone https://github.com/user/repo.git lib/repo  # Clone to lib/repo
+  git workspace clone -b develop https://github.com/user/repo.git
 
 Commands:
-  sync     Clone or pull all subs
-  list     List all registered subs
-  remove   Remove a sub
+  sync     Clone or pull all workspaces
+  list     List all registered workspaces
+  remove   Remove a workspace
   init     Install git hooks for auto-sync`,
 	Version: Version,
 	Args:    cobra.MaximumNArgs(2),

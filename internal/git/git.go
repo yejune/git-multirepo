@@ -430,3 +430,139 @@ func ListSkipWorktree(repoPath string) ([]string, error) {
 
 	return files, nil
 }
+
+// HasLocalChanges checks if there are uncommitted changes (including untracked files)
+func HasLocalChanges(path string) (bool, error) {
+	cmd := exec.Command("git", "-C", path, "status", "--porcelain")
+	out, err := cmd.Output()
+	if err != nil {
+		return false, err
+	}
+	return len(strings.TrimSpace(string(out))) > 0, nil
+}
+
+// CountChangedFiles counts the number of changed files
+func CountChangedFiles(path string) (int, error) {
+	cmd := exec.Command("git", "-C", path, "status", "--porcelain")
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, err
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) == 1 && lines[0] == "" {
+		return 0, nil
+	}
+	return len(lines), nil
+}
+
+// Stash stashes all local changes
+func Stash(path string) error {
+	cmd := exec.Command("git", "-C", path, "stash", "push", "-m", "git-sub auto-stash")
+	return cmd.Run()
+}
+
+// StashPop applies and removes the most recent stash
+func StashPop(path string) error {
+	cmd := exec.Command("git", "-C", path, "stash", "pop")
+	return cmd.Run()
+}
+
+// GetModifiedFiles returns list of modified files
+func GetModifiedFiles(path string) ([]string, error) {
+	cmd := exec.Command("git", "-C", path, "diff", "--name-only", "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	files := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(files) == 1 && files[0] == "" {
+		return []string{}, nil
+	}
+	return files, nil
+}
+
+// GetUntrackedFiles returns list of untracked files
+func GetUntrackedFiles(path string) ([]string, error) {
+	cmd := exec.Command("git", "-C", path, "ls-files", "--others", "--exclude-standard")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	files := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(files) == 1 && files[0] == "" {
+		return []string{}, nil
+	}
+	return files, nil
+}
+
+// GetStagedFiles returns list of staged files
+func GetStagedFiles(path string) ([]string, error) {
+	cmd := exec.Command("git", "-C", path, "diff", "--name-only", "--cached")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	files := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(files) == 1 && files[0] == "" {
+		return []string{}, nil
+	}
+	return files, nil
+}
+
+// Fetch fetches from remote
+func Fetch(path string) error {
+	cmd := exec.Command("git", "-C", path, "fetch", "origin")
+	cmd.Stderr = nil // Suppress stderr
+	return cmd.Run()
+}
+
+// GetBehindCount returns number of commits behind remote
+func GetBehindCount(path, branch string) (int, error) {
+	// Check if remote branch exists
+	cmd := exec.Command("git", "-C", path, "rev-parse", "--verify", "origin/"+branch)
+	if err := cmd.Run(); err != nil {
+		return 0, nil // Remote branch doesn't exist
+	}
+
+	cmd = exec.Command("git", "-C", path, "rev-list", "--count", branch+"..origin/"+branch)
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, err
+	}
+	var count int
+	_, err = fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &count)
+	return count, err
+}
+
+// GetAheadCount returns number of commits ahead of remote
+func GetAheadCount(path, branch string) (int, error) {
+	// Check if remote branch exists
+	cmd := exec.Command("git", "-C", path, "rev-parse", "--verify", "origin/"+branch)
+	if err := cmd.Run(); err != nil {
+		return 0, nil // Remote branch doesn't exist
+	}
+
+	cmd = exec.Command("git", "-C", path, "rev-list", "--count", "origin/"+branch+".."+branch)
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, err
+	}
+	var count int
+	_, err = fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &count)
+	return count, err
+}
+
+// GetSkipFileRemoteChanges returns diff of skip-worktree file between local and remote
+func GetSkipFileRemoteChanges(path, file string) (string, error) {
+	branch, err := GetCurrentBranch(path)
+	if err != nil {
+		return "", err
+	}
+
+	cmd := exec.Command("git", "-C", path, "diff", "HEAD", "origin/"+branch, "--", file)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}

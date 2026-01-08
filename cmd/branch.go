@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/yejune/git-sub/internal/git"
-	"github.com/yejune/git-sub/internal/manifest"
+	"github.com/yejune/git-workspace/internal/git"
+	"github.com/yejune/git-workspace/internal/manifest"
 )
 
 var branchCmd = &cobra.Command{

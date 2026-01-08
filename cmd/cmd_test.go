@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yejune/git-sub/internal/hooks"
-	"github.com/yejune/git-sub/internal/manifest"
+	"github.com/yejune/git-workspace/internal/hooks"
+	"github.com/yejune/git-workspace/internal/manifest"
 )
 
 // setupTestEnv creates a test environment with a git repository

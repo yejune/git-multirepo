@@ -1,4 +1,4 @@
-module github.com/yejune/git-sub
+module github.com/yejune/git-workspace
 
 go 1.21
 

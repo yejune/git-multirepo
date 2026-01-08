@@ -26,6 +26,7 @@ type Subclone struct {
 
 // Manifest represents the .gitsubs file structure
 type Manifest struct {
+	Language  string     `yaml:"language,omitempty"`
 	Skip      []string   `yaml:"skip,omitempty"`
 	Ignore    []string   `yaml:"ignore,omitempty"`
 	Subclones []Subclone `yaml:"subclones"`
@@ -131,4 +132,12 @@ func (m *Manifest) Find(path string) *Subclone {
 // Exists checks if a subclone exists at the given path
 func (m *Manifest) Exists(path string) bool {
 	return m.Find(path) != nil
+}
+
+// GetLanguage returns the configured language, defaults to "en"
+func (m *Manifest) GetLanguage() string {
+	if m.Language == "" {
+		return "en"
+	}
+	return m.Language
 }

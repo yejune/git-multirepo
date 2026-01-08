@@ -3,22 +3,28 @@ package cmd
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/yejune/git-sub/internal/git"
-	"github.com/yejune/git-sub/internal/manifest"
+	"github.com/yejune/git-workspace/internal/git"
+	"github.com/yejune/git-workspace/internal/i18n"
+	"github.com/yejune/git-workspace/internal/manifest"
 )
 
 var statusCmd = &cobra.Command{
-	Use:   "status",
-	Short: "Show status of all subs",
-	Long: `Display detailed status information:
-  - Mother repository ignore/skip configuration
-  - All subs status
-  - Verification results
+	Use:   "status [path]",
+	Short: "Show detailed status of subs",
+	Long: `Display comprehensive status information for each sub:
 
 Examples:
-  git sub status`,
+  git sub status              # Show status for all subs
+  git sub status apps/admin   # Show status for specific sub
+
+For each sub, shows:
+  1. Local Status (modified, untracked, staged files)
+  2. Remote Status (commits behind/ahead)
+  3. Skip Files (remote changes detection)
+  4. How to resolve (step-by-step commands)`,
 	RunE: runStatus,
 }
 
@@ -37,116 +43,209 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load manifest: %w", err)
 	}
 
-	// Section 1: Mother Repository Config
-	fmt.Println("Mother Repository Configuration:")
+	// Set language from manifest
+	i18n.SetLanguage(m.GetLanguage())
 
-	if len(m.Ignore) > 0 {
-		fmt.Println("  Ignore patterns:")
-		for _, pattern := range m.Ignore {
-			fmt.Printf("    - %s\n", pattern)
-		}
-	} else {
-		fmt.Println("  Ignore patterns: (none)")
-	}
-
-	if len(m.Skip) > 0 {
-		fmt.Println("  Skip-worktree files:")
-		for _, file := range m.Skip {
-			fmt.Printf("    - %s\n", file)
-		}
-	} else {
-		fmt.Println("  Skip-worktree files: (none)")
-	}
-
-	// Active skip-worktree
-	activeSkip, err := git.ListSkipWorktree(repoRoot)
-	if err == nil && len(activeSkip) > 0 {
-		fmt.Println("  Active skip-worktree:")
-		for _, file := range activeSkip {
-			inConfig := false
-			for _, s := range m.Skip {
-				if s == file {
-					inConfig = true
-					break
-				}
-			}
-			if inConfig {
-				fmt.Printf("    ✓ %s\n", file)
-			} else {
-				fmt.Printf("    ⚠ %s (not in config)\n", file)
-			}
-		}
-	}
-
-	fmt.Println()
-
-	// Section 2: Subclones Status
 	if len(m.Subclones) == 0 {
-		fmt.Println("No subclones registered.")
+		fmt.Println(i18n.T("no_subs_registered"))
 		return nil
 	}
 
-	fmt.Printf("Subclones (%d):\n\n", len(m.Subclones))
+	// Filter subs if path argument provided
+	var subsToProcess []manifest.Subclone
+	if len(args) > 0 {
+		targetPath := args[0]
+		found := false
+		for _, sub := range m.Subclones {
+			if sub.Path == targetPath {
+				subsToProcess = []manifest.Subclone{sub}
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf(i18n.T("sub_not_found", targetPath))
+		}
+	} else {
+		subsToProcess = m.Subclones
+	}
 
-	var issues []string
-
-	for _, sc := range m.Subclones {
+	for _, sc := range subsToProcess {
 		fullPath := filepath.Join(repoRoot, sc.Path)
 
-		fmt.Printf("  %s\n", sc.Path)
-		fmt.Printf("    Remote: %s\n", sc.Repo)
+		fmt.Printf("%s", sc.Path)
 
 		if !git.IsRepo(fullPath) {
-			fmt.Printf("    Status: ○ not cloned\n")
-			issues = append(issues, fmt.Sprintf("%s: not cloned", sc.Path))
+			fmt.Printf(" %s\n", i18n.T("not_cloned"))
+			fmt.Println()
+			fmt.Printf("  %s\n", i18n.T("how_to_resolve"))
+			fmt.Println("    git sub sync")
 			fmt.Println()
 			continue
 		}
 
-		// Current branch
+		// Get current branch
 		branch, err := git.GetCurrentBranch(fullPath)
 		if err != nil {
-			fmt.Printf("    Current branch: unknown\n")
-		} else {
-			fmt.Printf("    Current branch: %s\n", branch)
+			branch = "unknown"
 		}
+		fmt.Printf(" (%s):\n", branch)
+		fmt.Println()
 
-		// Check for changes
-		hasChanges, err := git.HasChanges(fullPath)
-		if err != nil {
-			fmt.Printf("    Status: ✗ error checking status\n")
-		} else if hasChanges {
-			fmt.Printf("    Status: ● has uncommitted changes\n")
-		} else {
-			fmt.Printf("    Status: ✓ clean\n")
-		}
+		// Section 1: Local Status
+		fmt.Printf("  %s\n", i18n.T("local_status"))
 
-		// Skip-worktree config
-		if len(sc.Skip) > 0 {
-			fmt.Println("    Skip-worktree:")
-			for _, file := range sc.Skip {
+		modifiedFiles, _ := git.GetModifiedFiles(fullPath)
+		untrackedFiles, _ := git.GetUntrackedFiles(fullPath)
+		stagedFiles, _ := git.GetStagedFiles(fullPath)
+
+		hasLocalChanges := false
+
+		if len(modifiedFiles) > 0 {
+			hasLocalChanges = true
+			fmt.Printf("    %s\n", i18n.T("files_modified", len(modifiedFiles)))
+			for _, file := range modifiedFiles {
 				fmt.Printf("      - %s\n", file)
 			}
 		}
 
-		// Verify .gitignore
-		if !hasGitignoreEntry(repoRoot, sc.Path) {
-			fmt.Printf("    ⚠ Missing from .gitignore\n")
-			issues = append(issues, fmt.Sprintf("%s: missing from .gitignore", sc.Path))
+		if len(untrackedFiles) > 0 {
+			hasLocalChanges = true
+			fmt.Printf("    %s\n", i18n.T("files_untracked", len(untrackedFiles)))
+			for _, file := range untrackedFiles {
+				fmt.Printf("      - %s\n", file)
+			}
 		}
 
+		if len(stagedFiles) > 0 {
+			hasLocalChanges = true
+			fmt.Printf("    %s\n", i18n.T("files_staged", len(stagedFiles)))
+			for _, file := range stagedFiles {
+				fmt.Printf("      - %s\n", file)
+			}
+		}
+
+		if !hasLocalChanges {
+			fmt.Printf("    %s\n", i18n.T("clean_working_tree"))
+		}
 		fmt.Println()
-	}
 
-	// Section 3: Verification Summary
-	if len(issues) > 0 {
-		fmt.Printf("Issues found (%d):\n", len(issues))
-		for _, issue := range issues {
-			fmt.Printf("  ✗ %s\n", issue)
+		// Section 2: Remote Status
+		fmt.Printf("  %s\n", i18n.T("remote_status"))
+
+		// Fetch from remote (suppress errors)
+		_ = git.Fetch(fullPath)
+
+		behindCount, _ := git.GetBehindCount(fullPath, branch)
+		aheadCount, _ := git.GetAheadCount(fullPath, branch)
+
+		if behindCount > 0 {
+			fmt.Printf("    %s\n", i18n.T("commits_behind", behindCount, branch))
 		}
-		fmt.Println("\nRun 'git sub sync' to fix automatically.")
-	} else {
-		fmt.Println("✓ All subclones verified successfully")
+
+		if aheadCount > 0 {
+			fmt.Printf("    %s\n", i18n.T("commits_ahead", aheadCount))
+		}
+
+		if behindCount == 0 && aheadCount == 0 {
+			fmt.Printf("    %s\n", i18n.T("up_to_date"))
+		}
+
+		// Check if remote branch exists
+		if behindCount == 0 && aheadCount == 0 {
+			// Try to verify remote branch exists
+			if err := git.Fetch(fullPath); err != nil {
+				fmt.Printf("    %s\n", i18n.T("cannot_fetch"))
+			}
+		}
+		fmt.Println()
+
+		// Section 3: Skip Files
+		if len(sc.Skip) > 0 {
+			fmt.Printf("  %s\n", i18n.T("skip_files"))
+
+			hasSkipChanges := false
+			for _, skipFile := range sc.Skip {
+				diff, err := git.GetSkipFileRemoteChanges(fullPath, skipFile)
+				if err == nil && strings.TrimSpace(diff) != "" {
+					hasSkipChanges = true
+					fmt.Printf("    %s\n", i18n.T("skip_file_changed", skipFile))
+
+					// Show a simple summary of changes
+					if strings.Contains(diff, "+") && !strings.Contains(diff, "-") {
+						fmt.Printf("      %s\n", i18n.T("skip_remote_added"))
+					} else if strings.Contains(diff, "-") && !strings.Contains(diff, "+") {
+						fmt.Printf("      %s\n", i18n.T("skip_remote_removed"))
+					} else if strings.Contains(diff, "+") && strings.Contains(diff, "-") {
+						fmt.Printf("      %s\n", i18n.T("skip_remote_modified"))
+					}
+					fmt.Printf("      %s\n", i18n.T("skip_file_protected"))
+				}
+			}
+
+			if !hasSkipChanges {
+				fmt.Printf("    %s\n", i18n.T("no_remote_changes"))
+			}
+			fmt.Println()
+		}
+
+		// Section 4: How to resolve
+		needsResolution := hasLocalChanges || behindCount > 0 || aheadCount > 0
+
+		if needsResolution {
+			fmt.Printf("  %s\n", i18n.T("how_to_resolve"))
+			fmt.Println()
+
+			if hasLocalChanges {
+				fmt.Printf("    %s\n", i18n.T("resolve_commit"))
+				fmt.Printf("       cd %s\n", sc.Path)
+				if len(stagedFiles) > 0 || len(modifiedFiles) > 0 {
+					fmt.Println("       git add .")
+					fmt.Println("       git commit -m \"your message\"")
+				}
+				if len(untrackedFiles) > 0 {
+					fmt.Printf("       %s\n", i18n.T("resolve_or_gitignore"))
+				}
+				fmt.Println()
+			}
+
+			if behindCount > 0 {
+				fmt.Printf("    %s\n", i18n.T("resolve_pull"))
+				fmt.Printf("       git sub pull %s\n", sc.Path)
+				fmt.Println()
+			}
+
+			if aheadCount > 0 {
+				fmt.Printf("    %s\n", i18n.T("resolve_push"))
+				fmt.Printf("       cd %s\n", sc.Path)
+				fmt.Println("       git push")
+				fmt.Println()
+			}
+
+			if len(sc.Skip) > 0 {
+				hasSkipChanges := false
+				for _, skipFile := range sc.Skip {
+					diff, err := git.GetSkipFileRemoteChanges(fullPath, skipFile)
+					if err == nil && strings.TrimSpace(diff) != "" {
+						hasSkipChanges = true
+						break
+					}
+				}
+
+				if hasSkipChanges {
+					fmt.Printf("    %s\n", i18n.T("resolve_skip"))
+					fmt.Printf("       cd %s\n", sc.Path)
+					fmt.Println("       git update-index --no-skip-worktree <file>")
+					fmt.Println("       git pull")
+					fmt.Printf("       %s\n", i18n.T("resolve_review"))
+					fmt.Println("       git update-index --skip-worktree <file>")
+					fmt.Println()
+				}
+			}
+		} else {
+			fmt.Printf("  %s\n", i18n.T("no_action_needed"))
+			fmt.Println()
+		}
 	}
 
 	return nil

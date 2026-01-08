@@ -1,5 +1,6 @@
 # Binary (only in root)
 /git-subclone
+/git-sub
 dist/
 
 # Python cache

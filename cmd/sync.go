@@ -7,9 +7,10 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/yejune/git-sub/internal/git"
-	"github.com/yejune/git-sub/internal/hooks"
-	"github.com/yejune/git-sub/internal/manifest"
+	"github.com/yejune/git-workspace/internal/git"
+	"github.com/yejune/git-workspace/internal/hooks"
+	"github.com/yejune/git-workspace/internal/i18n"
+	"github.com/yejune/git-workspace/internal/manifest"
 )
 
 var syncCmd = &cobra.Command{
@@ -37,32 +38,37 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("not in a git repository: %w", err)
 	}
 
-	fmt.Println("Syncing configuration...")
+	// Load manifest early to get language setting
+	m, err := manifest.Load(repoRoot)
+	if err == nil {
+		i18n.SetLanguage(m.GetLanguage())
+	}
+
+	fmt.Println(i18n.T("syncing"))
 
 	// 1. Auto-install hooks
 	if !hooks.IsInstalled(repoRoot) {
-		fmt.Println("→ Installing git hooks")
+		fmt.Println(i18n.T("installing_hooks"))
 		if err := hooks.Install(repoRoot); err != nil {
-			fmt.Printf("  ✗ Failed: %v\n", err)
+			fmt.Printf("  %s\n", i18n.T("hooks_failed", err))
 		} else {
-			fmt.Println("  ✓ Installed")
+			fmt.Printf("  %s\n", i18n.T("hooks_installed"))
 		}
 	}
 
 	// 2. Load manifest
-	m, err := manifest.Load(repoRoot)
 	if err != nil || len(m.Subclones) == 0 {
 		// No manifest or empty - scan directories for existing subs
-		fmt.Println("\n→ No .gitsubs found. Scanning for existing sub repositories...")
+		fmt.Println(i18n.T("no_gitsubs_found"))
 		discovered, scanErr := scanForSubs(repoRoot)
 		if scanErr != nil {
-			return fmt.Errorf("failed to scan directories: %w", scanErr)
+			return fmt.Errorf(i18n.T("failed_scan"), scanErr)
 		}
 
 		if len(discovered) == 0 {
-			fmt.Println("✓ No sub repositories found")
-			fmt.Println("\nTo add a sub, use:")
-			fmt.Println("  git sub clone <url> <path>")
+			fmt.Println(i18n.T("no_subs_found"))
+			fmt.Println(i18n.T("to_add_sub"))
+			fmt.Println(i18n.T("cmd_git_sub_clone"))
 			return nil
 		}
 
@@ -75,7 +81,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to save manifest: %w", err)
 		}
 
-		fmt.Printf("\n✓ Created .gitsubs with %d sub(s)\n", len(discovered))
+		fmt.Printf(i18n.T("created_gitsubs", len(discovered)))
 		for _, sc := range discovered {
 			fmt.Printf("  - %s (%s)\n", sc.Path, sc.Repo)
 		}
@@ -83,31 +89,31 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	// 3. Apply ignore patterns to mother repo
 	if len(m.Ignore) > 0 {
-		fmt.Println("\n→ Applying ignore patterns")
+		fmt.Println(i18n.T("applying_ignore"))
 		if err := git.AddIgnorePatternsToGitignore(repoRoot, m.Ignore); err != nil {
-			fmt.Printf("  ✗ Failed: %v\n", err)
+			fmt.Printf("  %s\n", i18n.T("hooks_failed", err))
 		} else {
-			fmt.Printf("  ✓ Applied %d patterns\n", len(m.Ignore))
+			fmt.Printf("  %s\n", i18n.T("applied_patterns", len(m.Ignore)))
 		}
 	}
 
 	// 4. Apply skip-worktree to mother repo
 	if len(m.Skip) > 0 {
-		fmt.Println("→ Applying skip-worktree to mother repo")
+		fmt.Println(i18n.T("applying_skip_mother"))
 		if err := git.ApplySkipWorktree(repoRoot, m.Skip); err != nil {
-			fmt.Printf("  ✗ Failed: %v\n", err)
+			fmt.Printf("  %s\n", i18n.T("hooks_failed", err))
 		} else {
-			fmt.Printf("  ✓ Applied to %d files\n", len(m.Skip))
+			fmt.Printf("  %s\n", i18n.T("applied_files", len(m.Skip)))
 		}
 	}
 
 	if len(m.Subclones) == 0 {
-		fmt.Println("\nNo subclones registered.")
+		fmt.Println(i18n.T("no_subclones"))
 		return nil
 	}
 
 	// 5. Process each subclone
-	fmt.Println("\n→ Processing subclones:")
+	fmt.Println(i18n.T("processing_subclones"))
 	issues := 0
 
 	for _, sc := range m.Subclones {
@@ -120,47 +126,47 @@ func runSync(cmd *cobra.Command, args []string) error {
 			entries, err := os.ReadDir(fullPath)
 			if err == nil && len(entries) > 0 {
 				// Directory exists with files - init git in place
-				fmt.Printf("    → Initializing .git (source files already present)\n")
+				fmt.Printf("    %s\n", i18n.T("initializing_git"))
 
 				if err := git.InitRepo(fullPath, sc.Repo, sc.Branch, sc.Commit); err != nil {
-					fmt.Printf("    ✗ Failed to initialize: %v\n", err)
+					fmt.Printf("    %s\n", i18n.T("failed_initialize", err))
 					issues++
 					continue
 				}
 
 				// Add to .gitignore
 				if err := git.AddToGitignore(repoRoot, sc.Path); err != nil {
-					fmt.Printf("    ⚠ Failed to update .gitignore: %v\n", err)
+					fmt.Printf("    %s\n", i18n.T("failed_update_gitignore", err))
 				}
 
-				fmt.Printf("    ✓ Initialized .git directory\n")
+				fmt.Printf("    %s\n", i18n.T("initialized_git"))
 				continue
 			}
 
 			// Directory empty or doesn't exist - clone normally
-			fmt.Printf("    → Cloning from %s\n", sc.Repo)
+			fmt.Printf("    %s\n", i18n.T("cloning_from", sc.Repo))
 
 			// Create parent directory if needed
 			parentDir := filepath.Dir(fullPath)
 			if err := os.MkdirAll(parentDir, 0755); err != nil {
-				fmt.Printf("    ✗ Failed to create directory: %v\n", err)
+				fmt.Printf("    %s\n", i18n.T("failed_create_dir", err))
 				issues++
 				continue
 			}
 
 			// Clone the repository
 			if err := git.Clone(sc.Repo, fullPath, sc.Branch); err != nil {
-				fmt.Printf("    ✗ Clone failed: %v\n", err)
+				fmt.Printf("    %s\n", i18n.T("clone_failed", err))
 				issues++
 				continue
 			}
 
 			// Add to .gitignore
 			if err := git.AddToGitignore(repoRoot, sc.Path); err != nil {
-				fmt.Printf("    ⚠ Failed to update .gitignore: %v\n", err)
+				fmt.Printf("    %s\n", i18n.T("failed_update_gitignore", err))
 			}
 
-			fmt.Printf("    ✓ Cloned successfully\n")
+			fmt.Printf("    %s\n", i18n.T("cloned_successfully"))
 			continue
 		}
 
@@ -171,8 +177,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 			hasUnpushed, checkErr := git.HasUnpushedCommits(fullPath)
 			if checkErr == nil {
 				if hasUnpushed {
-					fmt.Printf("    ⚠ Has unpushed commits (%s)\n", commit[:7])
-					fmt.Printf("      Push first: cd %s && git push\n", sc.Path)
+					fmt.Printf("    %s\n", i18n.T("has_unpushed", commit[:7]))
+					fmt.Printf("      %s\n", i18n.T("push_first", sc.Path))
 				} else {
 					// Update .gitsubs with pushed commit
 					oldCommit := "none"
@@ -180,42 +186,42 @@ func runSync(cmd *cobra.Command, args []string) error {
 						oldCommit = sc.Commit[:7]
 					}
 					m.UpdateCommit(sc.Path, commit)
-					fmt.Printf("    ✓ Updated commit: %s → %s\n", oldCommit, commit[:7])
+					fmt.Printf("    %s\n", i18n.T("updated_commit", oldCommit, commit[:7]))
 				}
 			}
 		}
 
 		// Verify and fix .gitignore entry
 		if !hasGitignoreEntry(repoRoot, sc.Path) {
-			fmt.Printf("    → Adding to .gitignore\n")
+			fmt.Printf("    %s\n", i18n.T("adding_to_gitignore"))
 			if err := git.AddToGitignore(repoRoot, sc.Path); err != nil {
-				fmt.Printf("    ✗ Failed: %v\n", err)
+				fmt.Printf("    %s\n", i18n.T("hooks_failed", err))
 				issues++
 			} else {
-				fmt.Printf("    ✓ Added\n")
+				fmt.Printf("    %s\n", i18n.T("added_to_gitignore"))
 			}
 		}
 
 		// Apply skip-worktree for this subclone
 		if len(sc.Skip) > 0 {
-			fmt.Printf("    → Applying skip-worktree (%d files)\n", len(sc.Skip))
+			fmt.Printf("    %s\n", i18n.T("applying_skip_sub", len(sc.Skip)))
 			if err := git.ApplySkipWorktree(fullPath, sc.Skip); err != nil {
-				fmt.Printf("    ✗ Failed: %v\n", err)
+				fmt.Printf("    %s\n", i18n.T("hooks_failed", err))
 				issues++
 			} else {
-				fmt.Printf("    ✓ Applied\n")
+				fmt.Printf("    %s\n", i18n.T("skip_applied"))
 			}
 		} else {
-			fmt.Printf("    ✓ No skip-worktree config\n")
+			fmt.Printf("    %s\n", i18n.T("no_skip_config"))
 		}
 
 		// Install/update post-commit hook in sub
 		if !hooks.IsSubHookInstalled(fullPath) {
-			fmt.Printf("    → Installing post-commit hook\n")
+			fmt.Printf("    %s\n", i18n.T("installing_hook"))
 			if err := hooks.InstallSubHook(fullPath); err != nil {
-				fmt.Printf("    ⚠ Failed to install hook: %v\n", err)
+				fmt.Printf("    %s\n", i18n.T("hook_failed", err))
 			} else {
-				fmt.Printf("    ✓ Hook installed\n")
+				fmt.Printf("    %s\n", i18n.T("hook_installed"))
 			}
 		}
 	}
@@ -228,9 +234,9 @@ func runSync(cmd *cobra.Command, args []string) error {
 	// Summary
 	fmt.Println()
 	if issues > 0 {
-		fmt.Printf("⚠ Completed with %d issue(s)\n", issues)
+		fmt.Println(i18n.T("completed_issues", issues))
 	} else {
-		fmt.Println("✓ All configurations applied successfully")
+		fmt.Println(i18n.T("all_success"))
 	}
 
 	return nil
@@ -290,7 +296,7 @@ func scanForSubs(repoRoot string) ([]manifest.Subclone, error) {
 		// Extract git info
 		repo, err := git.GetRemoteURL(subPath)
 		if err != nil {
-			fmt.Printf("⚠ %s: failed to get remote URL: %v\n", relPath, err)
+			fmt.Println(i18n.T("failed_get_remote", relPath, err))
 			return filepath.SkipDir
 		}
 
@@ -301,11 +307,11 @@ func scanForSubs(repoRoot string) ([]manifest.Subclone, error) {
 
 		commit, err := git.GetCurrentCommit(subPath)
 		if err != nil {
-			fmt.Printf("⚠ %s: failed to get commit: %v\n", relPath, err)
+			fmt.Println(i18n.T("failed_get_commit", relPath, err))
 			return filepath.SkipDir
 		}
 
-		fmt.Printf("  Found: %s\n", relPath)
+		fmt.Printf("  %s\n", i18n.T("found_sub", relPath))
 
 		subs = append(subs, manifest.Subclone{
 			Path:   relPath,
