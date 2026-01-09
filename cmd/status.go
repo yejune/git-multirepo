@@ -77,7 +77,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			fmt.Printf(" %s\n", i18n.T("not_cloned"))
 			fmt.Println()
 			fmt.Printf("  %s\n", i18n.T("how_to_resolve"))
-			fmt.Println("    git sub sync")
+			fmt.Println("    git workspace sync")
 			fmt.Println()
 			continue
 		}

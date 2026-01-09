@@ -74,7 +74,7 @@ func runClone(cmd *cobra.Command, args []string) error {
 
 	// Check if already exists
 	if m.Exists(path) {
-		return fmt.Errorf("sub already exists at %s", path)
+		return fmt.Errorf("workspace already exists at %s", path)
 	}
 
 	// Create parent directory if needed
@@ -101,12 +101,12 @@ func runClone(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to update .gitignore: %w", err)
 	}
 
-	// Install post-commit hook in sub
+	// Install post-commit hook in workspace
 	if err := hooks.InstallSubHook(fullPath); err != nil {
 		fmt.Printf("⚠ Failed to install hook: %v\n", err)
 	}
 
-	fmt.Printf("✓ Added sub: %s\n", path)
+	fmt.Printf("✓ Added workspace: %s\n", path)
 	fmt.Printf("  Repository: %s\n", repo)
 
 	return nil
