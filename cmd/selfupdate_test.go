@@ -31,7 +31,7 @@ func TestRunSelfupdate(t *testing.T) {
 		updaterFactory = func(version string) *update.Updater {
 			mockClient := &MockHTTPClientCmd{
 				DoFunc: func(req *http.Request) (*http.Response, error) {
-					body := `{"tag_name": "v1.0.0", "assets": []}`
+					body := `[{"tag_name": "v1.0.0", "assets": []}]`
 					return &http.Response{
 						StatusCode: http.StatusOK,
 						Body:       io.NopCloser(strings.NewReader(body)),
@@ -94,10 +94,10 @@ func TestRunSelfupdate(t *testing.T) {
 					if requestCount == 1 {
 						// First request: check for update
 						assetName := fmt.Sprintf("git-workspace-%s-%s", runtime.GOOS, runtime.GOARCH)
-						body := fmt.Sprintf(`{
+						body := fmt.Sprintf(`[{
 							"tag_name": "v2.0.0",
 							"assets": [{"name": "%s", "browser_download_url": "https://example.com/download"}]
-						}`, assetName)
+						}]`, assetName)
 						return &http.Response{
 							StatusCode: http.StatusOK,
 							Body:       io.NopCloser(strings.NewReader(body)),
@@ -149,10 +149,10 @@ func TestRunSelfupdate(t *testing.T) {
 					if requestCount == 1 {
 						// First request: check for update
 						assetName := fmt.Sprintf("git-workspace-%s-%s", runtime.GOOS, runtime.GOARCH)
-						body := fmt.Sprintf(`{
+						body := fmt.Sprintf(`[{
 							"tag_name": "v2.0.0",
 							"assets": [{"name": "%s", "browser_download_url": "https://example.com/download"}]
-						}`, assetName)
+						}]`, assetName)
 						return &http.Response{
 							StatusCode: http.StatusOK,
 							Body:       io.NopCloser(strings.NewReader(body)),
@@ -209,10 +209,10 @@ func TestRunSelfupdate(t *testing.T) {
 					requestCount++
 					if requestCount == 1 {
 						assetName := fmt.Sprintf("git-workspace-%s-%s", runtime.GOOS, runtime.GOARCH)
-						body := fmt.Sprintf(`{
+						body := fmt.Sprintf(`[{
 							"tag_name": "v1.0.0",
 							"assets": [{"name": "%s", "browser_download_url": "https://example.com/download"}]
-						}`, assetName)
+						}]`, assetName)
 						return &http.Response{
 							StatusCode: http.StatusOK,
 							Body:       io.NopCloser(strings.NewReader(body)),

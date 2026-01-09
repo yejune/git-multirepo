@@ -15,20 +15,20 @@ var listRecursive bool
 var listCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
-	Short:   "List all registered subs",
-	Long: `Display all subs registered in .workspaces.
+	Short:   "List all registered workspaces",
+	Long: `Display all workspaces registered in .workspaces.
 
 Shows path, repository URL, branch, and current status.
 
 Examples:
-  git sub list
-  git sub ls
-  git sub ls -r`,
+  git workspace list
+  git workspace ls
+  git workspace ls -r`,
 	RunE: runList,
 }
 
 func init() {
-	listCmd.Flags().BoolVarP(&listRecursive, "recursive", "r", false, "Recursively list subs within subs")
+	listCmd.Flags().BoolVarP(&listRecursive, "recursive", "r", false, "Recursively list workspaces within workspaces")
 	rootCmd.AddCommand(listCmd)
 }
 
@@ -52,15 +52,15 @@ func listDir(dir string, recursive bool, depth int) error {
 		return fmt.Errorf("failed to load manifest: %w", err)
 	}
 
-	if len(m.Subclones) == 0 {
+	if len(m.Workspaces) == 0 {
 		if depth == 0 {
-			fmt.Println("No subclones registered.")
+			fmt.Println("No workspaces registered.")
 		}
 		return nil
 	}
 
-	for _, sc := range m.Subclones {
-		fullPath := filepath.Join(dir, sc.Path)
+	for _, ws := range m.Workspaces {
+		fullPath := filepath.Join(dir, ws.Path)
 
 		// Check status
 		var status string
@@ -85,8 +85,8 @@ func listDir(dir string, recursive bool, depth int) error {
 			"error":      "✗",
 		}[status]
 
-		fmt.Printf("%s%s %s\n", indent, statusIcon, sc.Path)
-		fmt.Printf("%s  └─ %s\n", indent, sc.Repo)
+		fmt.Printf("%s%s %s\n", indent, statusIcon, ws.Path)
+		fmt.Printf("%s  └─ %s\n", indent, ws.Repo)
 
 		// Recursive list
 		if recursive {

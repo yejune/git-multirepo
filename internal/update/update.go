@@ -15,8 +15,10 @@ import (
 
 // GitHubRelease represents a GitHub release response
 type GitHubRelease struct {
-	TagName string  `json:"tag_name"`
-	Assets  []Asset `json:"assets"`
+	TagName    string  `json:"tag_name"`
+	Assets     []Asset `json:"assets"`
+	Draft      bool    `json:"draft"`
+	Prerelease bool    `json:"prerelease"`
 }
 
 // Asset represents a release asset
@@ -109,7 +111,7 @@ func (u *Updater) Update(release *GitHubRelease) error {
 
 // getLatestRelease fetches the latest release from GitHub API
 func (u *Updater) getLatestRelease() (*GitHubRelease, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", u.RepoOwner, u.RepoName)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases", u.RepoOwner, u.RepoName)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -121,7 +123,7 @@ func (u *Updater) getLatestRelease() (*GitHubRelease, error) {
 
 	resp, err := u.HTTPClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch release: %w", err)
+		return nil, fmt.Errorf("failed to fetch releases: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -133,12 +135,24 @@ func (u *Updater) getLatestRelease() (*GitHubRelease, error) {
 		return nil, fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
 	}
 
-	var release GitHubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return nil, fmt.Errorf("failed to parse release: %w", err)
+	var releases []GitHubRelease
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+		return nil, fmt.Errorf("failed to parse releases: %w", err)
 	}
 
-	return &release, nil
+	if len(releases) == 0 {
+		return nil, fmt.Errorf("no releases found")
+	}
+
+	// Find first non-draft, non-prerelease
+	for _, r := range releases {
+		if !r.Draft && !r.Prerelease {
+			return &r, nil
+		}
+	}
+
+	// If all are drafts/prereleases, return the first one
+	return &releases[0], nil
 }
 
 // getAssetName returns the expected asset name for the current platform

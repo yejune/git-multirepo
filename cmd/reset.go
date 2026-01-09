@@ -100,22 +100,15 @@ func runResetSkip(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Reapply from manifest
-	if len(m.Skip) > 0 {
-		if err := git.ApplySkipWorktree(repoRoot, m.Skip); err != nil {
-			return fmt.Errorf("failed to apply skip-worktree: %w", err)
-		}
-	}
-
-	// Reset each workspace (subclone)
-	for _, ws := range m.GetWorkspaces() {
+	// Reset each workspace
+	for _, ws := range m.Workspaces {
 		fullPath := filepath.Join(repoRoot, ws.Path)
 		if !git.IsRepo(fullPath) {
 			continue
 		}
 
 		// Handle keep files: restore from origin but keep local modifications
-		keepFiles := ws.GetKeepFiles()
+		keepFiles := ws.Keep
 		if len(keepFiles) > 0 {
 			// 1. Unapply skip-worktree for keep files
 			if err := git.UnapplySkipWorktree(fullPath, keepFiles); err != nil {
@@ -123,7 +116,7 @@ func runResetSkip(cmd *cobra.Command, args []string) error {
 			}
 
 			// 2. Restore original files from HEAD (git checkout HEAD -- file)
-			// Note: This does NOT delete .workspaces-patches/ or backup files
+			// Note: This does NOT delete .workspaces/patches/ or backup files
 			for _, file := range keepFiles {
 				cmd := exec.Command("git", "-C", fullPath, "checkout", "HEAD", "--", file)
 				if err := cmd.Run(); err != nil {
@@ -132,23 +125,9 @@ func runResetSkip(cmd *cobra.Command, args []string) error {
 				}
 			}
 
-			// 3. Reapply skip-worktree (patches are preserved in .workspaces-patches/)
+			// 3. Reapply skip-worktree (patches are preserved in .workspaces/patches/)
 			if err := git.ApplySkipWorktree(fullPath, keepFiles); err != nil {
 				fmt.Printf("⚠ Warning: failed to reapply skip-worktree for keep files in %s: %v\n", ws.Path, err)
-			}
-		}
-
-		// Handle regular skip-worktree files (deprecated)
-		activeSkip, err := git.ListSkipWorktree(fullPath)
-		if err == nil && len(activeSkip) > 0 {
-			if err := git.UnapplySkipWorktree(fullPath, activeSkip); err != nil {
-				fmt.Printf("⚠ Warning: failed to remove skip-worktree in %s: %v\n", ws.Path, err)
-			}
-		}
-
-		if len(ws.Skip) > 0 {
-			if err := git.ApplySkipWorktree(fullPath, ws.Skip); err != nil {
-				fmt.Printf("⚠ Warning: failed to apply skip-worktree in %s: %v\n", ws.Path, err)
 			}
 		}
 

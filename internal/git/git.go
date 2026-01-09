@@ -116,7 +116,7 @@ func GetRepoRoot() (string, error) {
 }
 
 // AddToGitignore adds a path's .git directory to .gitignore
-// This allows the subclone's files to be tracked by the parent repo
+// This allows the workspace's files to be tracked by the parent repo
 // while keeping the nested .git separate
 func AddToGitignore(repoRoot, path string) error {
 	gitignorePath := filepath.Join(repoRoot, ".gitignore")

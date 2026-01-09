@@ -17,16 +17,16 @@ import (
 
 var syncCmd = &cobra.Command{
 	Use:   "sync",
-	Short: "Clone missing subs and apply configurations",
-	Long: `Sync all subs from .workspaces manifest:
-  - Clone missing subs automatically
+	Short: "Clone missing workspaces and apply configurations",
+	Long: `Sync all workspaces from .workspaces manifest:
+  - Clone missing workspaces automatically
   - Install git hooks if not present
   - Apply ignore patterns to .gitignore
   - Apply skip-worktree to specified files
-  - Verify .gitignore entries for subs
+  - Verify .gitignore entries for workspaces
 
 Examples:
-  git sub sync`,
+  git workspace sync`,
 	RunE: runSync,
 }
 
@@ -59,10 +59,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	// 2. Load manifest
-	if err != nil || len(m.Subclones) == 0 {
-		// No manifest or empty - scan directories for existing subs
+	if err != nil || len(m.Workspaces) == 0 {
+		// No manifest or empty - scan directories for existing workspaces
 		fmt.Println(i18n.T("no_gitsubs_found"))
-		discovered, scanErr := scanForSubs(repoRoot)
+		discovered, scanErr := scanForWorkspaces(repoRoot)
 		if scanErr != nil {
 			return fmt.Errorf(i18n.T("failed_scan"), scanErr)
 		}
@@ -74,9 +74,9 @@ func runSync(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 
-		// Create manifest from discovered subs
+		// Create manifest from discovered workspaces
 		m = &manifest.Manifest{
-			Subclones: discovered,
+			Workspaces: discovered,
 		}
 
 		if err := manifest.Save(repoRoot, m); err != nil {
@@ -84,8 +84,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 
 		fmt.Printf(i18n.T("created_gitsubs", len(discovered)))
-		for _, sc := range discovered {
-			fmt.Printf("  - %s (%s)\n", sc.Path, sc.Repo)
+		for _, ws := range discovered {
+			fmt.Printf("  - %s (%s)\n", ws.Path, ws.Repo)
 		}
 	}
 
@@ -99,17 +99,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 4. Apply skip-worktree to mother repo (deprecated, use Keep)
-	if len(m.Skip) > 0 {
-		fmt.Println(i18n.T("applying_skip_mother"))
-		if err := git.ApplySkipWorktree(repoRoot, m.Skip); err != nil {
-			fmt.Printf("  %s\n", i18n.T("hooks_failed", err))
-		} else {
-			fmt.Printf("  %s\n", i18n.T("applied_files", len(m.Skip)))
-		}
-	}
-
-	// 5. Process Mother repo keep files
+	// 4. Process Mother repo keep files
 	issues := 0
 	motherKeepFiles := m.Keep
 	if len(motherKeepFiles) > 0 {
@@ -117,19 +107,19 @@ func runSync(cmd *cobra.Command, args []string) error {
 		processKeepFiles(repoRoot, repoRoot, motherKeepFiles, &issues)
 	}
 
-	if len(m.Subclones) == 0 {
+	if len(m.Workspaces) == 0 {
 		fmt.Println(i18n.T("no_subclones"))
 		return nil
 	}
 
-	// 6. Process each subclone
+	// 5. Process each workspace
 	fmt.Println(i18n.T("processing_subclones"))
 
-	for _, sc := range m.Subclones {
-		fullPath := filepath.Join(repoRoot, sc.Path)
-		fmt.Printf("\n  %s\n", sc.Path)
+	for _, ws := range m.Workspaces {
+		fullPath := filepath.Join(repoRoot, ws.Path)
+		fmt.Printf("\n  %s\n", ws.Path)
 
-		// Check if subclone exists
+		// Check if workspace exists
 		if !git.IsRepo(fullPath) {
 			// Check if directory has files (parent is tracking source)
 			entries, err := os.ReadDir(fullPath)
@@ -137,14 +127,14 @@ func runSync(cmd *cobra.Command, args []string) error {
 				// Directory exists with files - init git in place
 				fmt.Printf("    %s\n", i18n.T("initializing_git"))
 
-				if err := git.InitRepo(fullPath, sc.Repo, sc.Branch, sc.Commit); err != nil {
+				if err := git.InitRepo(fullPath, ws.Repo, ws.Branch, ws.Commit); err != nil {
 					fmt.Printf("    %s\n", i18n.T("failed_initialize", err))
 					issues++
 					continue
 				}
 
 				// Add to .gitignore
-				if err := git.AddToGitignore(repoRoot, sc.Path); err != nil {
+				if err := git.AddToGitignore(repoRoot, ws.Path); err != nil {
 					fmt.Printf("    %s\n", i18n.T("failed_update_gitignore", err))
 				}
 
@@ -153,7 +143,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			}
 
 			// Directory empty or doesn't exist - clone normally
-			fmt.Printf("    %s\n", i18n.T("cloning_from", sc.Repo))
+			fmt.Printf("    %s\n", i18n.T("cloning_from", ws.Repo))
 
 			// Create parent directory if needed
 			parentDir := filepath.Dir(fullPath)
@@ -164,14 +154,14 @@ func runSync(cmd *cobra.Command, args []string) error {
 			}
 
 			// Clone the repository
-			if err := git.Clone(sc.Repo, fullPath, sc.Branch); err != nil {
+			if err := git.Clone(ws.Repo, fullPath, ws.Branch); err != nil {
 				fmt.Printf("    %s\n", i18n.T("clone_failed", err))
 				issues++
 				continue
 			}
 
 			// Add to .gitignore
-			if err := git.AddToGitignore(repoRoot, sc.Path); err != nil {
+			if err := git.AddToGitignore(repoRoot, ws.Path); err != nil {
 				fmt.Printf("    %s\n", i18n.T("failed_update_gitignore", err))
 			}
 
@@ -181,29 +171,29 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 		// Auto-update commit hash in .workspaces
 		commit, err := git.GetCurrentCommit(fullPath)
-		if err == nil && commit != sc.Commit {
+		if err == nil && commit != ws.Commit {
 			// Check if pushed
 			hasUnpushed, checkErr := git.HasUnpushedCommits(fullPath)
 			if checkErr == nil {
 				if hasUnpushed {
 					fmt.Printf("    %s\n", i18n.T("has_unpushed", commit[:7]))
-					fmt.Printf("      %s\n", i18n.T("push_first", sc.Path))
+					fmt.Printf("      %s\n", i18n.T("push_first", ws.Path))
 				} else {
 					// Update .workspaces with pushed commit
 					oldCommit := "none"
-					if sc.Commit != "" {
-						oldCommit = sc.Commit[:7]
+					if ws.Commit != "" {
+						oldCommit = ws.Commit[:7]
 					}
-					m.UpdateCommit(sc.Path, commit)
+					m.UpdateCommit(ws.Path, commit)
 					fmt.Printf("    %s\n", i18n.T("updated_commit", oldCommit, commit[:7]))
 				}
 			}
 		}
 
 		// Verify and fix .gitignore entry
-		if !hasGitignoreEntry(repoRoot, sc.Path) {
+		if !hasGitignoreEntry(repoRoot, ws.Path) {
 			fmt.Printf("    %s\n", i18n.T("adding_to_gitignore"))
-			if err := git.AddToGitignore(repoRoot, sc.Path); err != nil {
+			if err := git.AddToGitignore(repoRoot, ws.Path); err != nil {
 				fmt.Printf("    %s\n", i18n.T("hooks_failed", err))
 				issues++
 			} else {
@@ -211,27 +201,14 @@ func runSync(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		// Apply skip-worktree for this subclone (deprecated, use Keep)
-		if len(sc.Skip) > 0 {
-			fmt.Printf("    %s\n", i18n.T("applying_skip_sub", len(sc.Skip)))
-			if err := git.ApplySkipWorktree(fullPath, sc.Skip); err != nil {
-				fmt.Printf("    %s\n", i18n.T("hooks_failed", err))
-				issues++
-			} else {
-				fmt.Printf("    %s\n", i18n.T("skip_applied"))
-			}
-		} else {
-			fmt.Printf("    %s\n", i18n.T("no_skip_config"))
-		}
-
 		// Process keep files for this workspace
-		keepFiles := sc.GetKeepFiles()
+		keepFiles := ws.Keep
 		if len(keepFiles) > 0 {
 			fmt.Printf("    %s\n", i18n.T("processing_keep_files", len(keepFiles)))
 			processKeepFiles(repoRoot, fullPath, keepFiles, &issues)
 		}
 
-		// Install/update post-commit hook in sub
+		// Install/update post-commit hook in workspace
 		if !hooks.IsSubHookInstalled(fullPath) {
 			fmt.Printf("    %s\n", i18n.T("installing_hook"))
 			if err := hooks.InstallSubHook(fullPath); err != nil {
@@ -275,9 +252,9 @@ func hasGitignoreEntry(repoRoot, path string) bool {
 	return false
 }
 
-// scanForSubs recursively scans directories for git repositories
-func scanForSubs(repoRoot string) ([]manifest.Subclone, error) {
-	var subs []manifest.Subclone
+// scanForWorkspaces recursively scans directories for git repositories
+func scanForWorkspaces(repoRoot string) ([]manifest.WorkspaceEntry, error) {
+	var workspaces []manifest.WorkspaceEntry
 
 	// Walk the directory tree
 	err := filepath.Walk(repoRoot, func(path string, info os.FileInfo, err error) error {
@@ -296,32 +273,32 @@ func scanForSubs(repoRoot string) ([]manifest.Subclone, error) {
 		}
 
 		// Get the repository path (parent of .git)
-		subPath := filepath.Dir(path)
+		workspacePath := filepath.Dir(path)
 
 		// Skip if it's the parent repo itself
-		if subPath == repoRoot {
+		if workspacePath == repoRoot {
 			return filepath.SkipDir
 		}
 
 		// Get relative path from parent
-		relPath, err := filepath.Rel(repoRoot, subPath)
+		relPath, err := filepath.Rel(repoRoot, workspacePath)
 		if err != nil {
 			return nil
 		}
 
 		// Extract git info
-		repo, err := git.GetRemoteURL(subPath)
+		repo, err := git.GetRemoteURL(workspacePath)
 		if err != nil {
 			fmt.Println(i18n.T("failed_get_remote", relPath, err))
 			return filepath.SkipDir
 		}
 
-		branch, err := git.GetCurrentBranch(subPath)
+		branch, err := git.GetCurrentBranch(workspacePath)
 		if err != nil {
 			branch = ""
 		}
 
-		commit, err := git.GetCurrentCommit(subPath)
+		commit, err := git.GetCurrentCommit(workspacePath)
 		if err != nil {
 			fmt.Println(i18n.T("failed_get_commit", relPath, err))
 			return filepath.SkipDir
@@ -329,24 +306,24 @@ func scanForSubs(repoRoot string) ([]manifest.Subclone, error) {
 
 		fmt.Printf("  %s\n", i18n.T("found_sub", relPath))
 
-		subs = append(subs, manifest.Subclone{
+		workspaces = append(workspaces, manifest.WorkspaceEntry{
 			Path:   relPath,
 			Repo:   repo,
 			Branch: branch,
 			Commit: commit,
 		})
 
-		// Skip descending into this sub's subdirectories
+		// Skip descending into this workspace's subdirectories
 		return filepath.SkipDir
 	})
 
-	return subs, err
+	return workspaces, err
 }
 
 // processKeepFiles handles backup, patch creation, and skip-worktree for keep files
 func processKeepFiles(repoRoot, workspacePath string, keepFiles []string, issues *int) {
-	backupDir := filepath.Join(repoRoot, ".workspaces-backup")
-	patchBaseDir := filepath.Join(repoRoot, ".workspaces-patches")
+	backupDir := filepath.Join(repoRoot, ".workspaces", "backup")
+	patchBaseDir := filepath.Join(repoRoot, ".workspaces", "patches")
 
 	for _, file := range keepFiles {
 		filePath := filepath.Join(workspacePath, file)

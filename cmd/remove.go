@@ -16,16 +16,16 @@ var removeKeepFiles bool
 var removeCmd = &cobra.Command{
 	Use:     "remove <path>",
 	Aliases: []string{"rm"},
-	Short:   "Remove a sub",
-	Long: `Remove a sub from the manifest and optionally delete its files.
+	Short:   "Remove a workspace",
+	Long: `Remove a workspace from the manifest and optionally delete its files.
 
 By default, prompts before deleting files. Use --force to skip confirmation.
 Use --keep-files to only remove from manifest without deleting files.
 
 Examples:
-  git sub remove packages/lib
-  git sub rm packages/lib --force
-  git sub rm packages/lib --keep-files`,
+  git workspace remove packages/lib
+  git workspace rm packages/lib --force
+  git workspace rm packages/lib --keep-files`,
 	Args: cobra.ExactArgs(1),
 	RunE: runRemove,
 }
@@ -50,7 +50,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	}
 
 	if !m.Exists(path) {
-		return fmt.Errorf("subclone not found: %s", path)
+		return fmt.Errorf("workspace not found: %s", path)
 	}
 
 	fullPath := filepath.Join(repoRoot, path)
@@ -59,13 +59,13 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	if git.IsRepo(fullPath) {
 		hasChanges, _ := git.HasChanges(fullPath)
 		if hasChanges && !removeForce {
-			return fmt.Errorf("subclone has uncommitted changes. Use --force to remove anyway")
+			return fmt.Errorf("workspace has uncommitted changes. Use --force to remove anyway")
 		}
 	}
 
 	// Confirm deletion
 	if !removeKeepFiles && !removeForce {
-		fmt.Printf("Remove subclone '%s' and delete its files? [y/N] ", path)
+		fmt.Printf("Remove workspace '%s' and delete its files? [y/N] ", path)
 		var response string
 		fmt.Scanln(&response)
 		if response != "y" && response != "Y" {
@@ -92,9 +92,9 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		if err := os.RemoveAll(fullPath); err != nil {
 			return fmt.Errorf("failed to delete files: %w", err)
 		}
-		fmt.Printf("✓ Removed subclone: %s (files deleted)\n", path)
+		fmt.Printf("✓ Removed workspace: %s (files deleted)\n", path)
 	} else {
-		fmt.Printf("✓ Removed subclone: %s (files kept)\n", path)
+		fmt.Printf("✓ Removed workspace: %s (files kept)\n", path)
 	}
 
 	return nil

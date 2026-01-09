@@ -21,8 +21,8 @@ func CreatePatchBackup(patchPath, backupDir string) error {
 	now := time.Now()
 	timestamp := now.Format("20060102_150405")
 
-	// Extract relative path from .workspaces-patches/
-	relPath := strings.TrimPrefix(patchPath, ".workspaces-patches/")
+	// Extract relative path from .workspaces/patches/
+	relPath := strings.TrimPrefix(patchPath, ".workspaces/patches/")
 
 	// Build backup path: backup/patched/yyyy/mm/dd/...
 	backupPath := filepath.Join(

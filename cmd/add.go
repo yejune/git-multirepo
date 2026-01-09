@@ -14,16 +14,17 @@ import (
 var addBranch string
 
 var addCmd = &cobra.Command{
-	Use:   "add <repo> <path>",
-	Short: "Add a new sub",
-	Long: `Clone a repository as a sub and register it in .workspaces.
+	Use:     "add <repo> <path>",
+	Aliases: []string{"clone"},
+	Short:   "Add a new workspace (alias: clone)",
+	Long: `Clone a repository as a workspace and register it in .workspaces.
 
-The sub's source files will be tracked by the parent repo,
+The workspace's source files will be tracked by the parent repo,
 but its .git directory will be ignored (added to .gitignore).
 
 Examples:
-  git sub add https://github.com/user/lib.git packages/lib
-  git sub add git@github.com:user/lib.git packages/lib -b develop`,
+  git workspace add https://github.com/user/lib.git packages/lib
+  git workspace add git@github.com:user/lib.git packages/lib -b develop`,
 	Args: cobra.ExactArgs(2),
 	RunE: runAdd,
 }
@@ -51,7 +52,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	// Check if already exists
 	if m.Exists(path) {
-		return fmt.Errorf("subclone already exists at %s", path)
+		return fmt.Errorf("workspace already exists at %s", path)
 	}
 
 	// Create parent directory if needed
@@ -85,12 +86,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to update .gitignore: %w", err)
 	}
 
-	// Install post-commit hook in sub
+	// Install post-commit hook in workspace
 	if err := hooks.InstallSubHook(fullPath); err != nil {
 		fmt.Printf("⚠ Failed to install hook: %v\n", err)
 	}
 
-	fmt.Printf("✓ Added subclone: %s\n", path)
+	fmt.Printf("✓ Added workspace: %s\n", path)
 	fmt.Printf("  Repository: %s\n", repo)
 
 	return nil

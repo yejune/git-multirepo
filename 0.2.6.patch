@@ -1,0 +1,131 @@
+diff --git a/README.md b/README.md
+index dd3a0d7..79f4a47 100644d
+--- a/README.md
++++ b/README.md
+@@ -188,10 +188,15 @@ git workspace remove packages/lib
+ 
+ ### `git workspace selfupdate`
+ 
+-Update git-sub to the latest version.
++Update git-workspace to the latest version.
+ 
+ ```bash
+ git workspace selfupdate  # downloads and installs latest release
++
++# If installed via Homebrew
++brew upgrade git-workspace
++
++# Selfupdate will automatically detect Homebrew installation
+ ```
+ 
+ ## Advanced Usage
+@@ -270,7 +275,7 @@ subclones:
+   - path: packages/lib
+     repo: https://github.com/user/lib.git
+     commit: abc123def456789...  # Exact commit hash
+-    branch: main
++    keep: []  # Files to preserve across updates
+   - path: packages/utils
+     repo: git@github.com:user/utils.git
+ ```
+diff --git a/cmd/add.go b/cmd/add.go
+index dcfae94..f9e5f61 100644
+--- a/cmd/add.go
++++ b/cmd/add.go
+@@ -14,11 +14,13 @@ import (
+ var addBranch string
+ 
+ var addCmd = &cobra.Command{
+-	Use:   "add <repo> <path>",
+-	Short: "Add a new workspace",
+-	Long: `Clone a repository as a workspace and register it in .workspaces.
++	Use:     "add <repo> <path>",
++	Aliases: []string{"clone"},
++	Short:   "Add a new workspace (alias: clone)",
++	Long: `Clone a repository as a workspace and register it in .workspaces.
+ 
+ The workspace's source files will be tracked by the parent repo,
+but its .git directory will be ignored (added to .gitignore).
+ 
+ Examples:
+   git workspace add https://github.com/user/lib.git packages/lib
++  git workspace clone https://github.com/user/lib.git packages/lib
+   git workspace add git@github.com:user/lib.git packages/lib -b develop`,
+diff --git a/cmd/root.go b/cmd/root.go
+index 4e4b7ab..f06c11c 100644
+--- a/cmd/root.go
++++ b/cmd/root.go
+@@ -31,9 +31,10 @@ while the parent project tracks the source files (but not .git).
+ Quick usage:
+   git workspace clone <url> [path]              # Clone to path (or auto-detect)
+   git workspace clone -b <branch> <url> [path]  # Clone specific branch
+ 
+ Commands:
++  add      Add/clone a new workspace (alias: clone)
+   sync     Clone or pull all workspaces
+   list     List all registered workspaces
+   remove   Remove a workspace
+   init     Install git hooks for auto-sync`,
+diff --git a/cmd/selfupdate.go b/cmd/selfupdate.go
+index 0d3b78b..e41f28e 100644
+--- a/cmd/selfupdate.go
++++ b/cmd/selfupdate.go
+@@ -2,6 +2,9 @@ package cmd
+ 
+ import (
+ 	"fmt"
++	"os"
++	"os/exec"
++	"strings"
+ 	"runtime"
+ 
+ 	"github.com/spf13/cobra"
+@@ -12,10 +15,23 @@ var selfupdateCmd = &cobra.Command{
+ 	Use:   "selfupdate",
+ 	Short: "Update git-workspace to the latest version",
+ 	Long: `Check for and install the latest version of git-workspace.
++
++If installed via Homebrew, it will use 'brew upgrade'.
++Otherwise, it will download and replace the binary directly.
+ 
+ Examples:
+   git workspace selfupdate`,
+ 	RunE: func(cmd *cobra.Command, args []string) error {
++		// Check if installed via Homebrew
++		execPath, err := os.Executable()
++		if err == nil && isHomebrewInstall(execPath) {
++			fmt.Println("Detected Homebrew installation")
++			fmt.Println("Running: brew upgrade git-workspace")
++			
++			brewCmd := exec.Command("brew", "upgrade", "git-workspace")
++			brewCmd.Stdout = os.Stdout
++			brewCmd.Stderr = os.Stderr
++			return brewCmd.Run()
++		}
++		
++		// Direct binary installation
+ 		fmt.Println("Checking for updates...")
+ 		repo := "yejune/git-workspace"
+ 		currentVersion := Version
+@@ -42,6 +58,12 @@ Examples:
+ 	},
+ }
+ 
++func isHomebrewInstall(execPath string) bool {
++	// Check if installed via Homebrew
++	return strings.Contains(execPath, "/Cellar/") ||
++	       strings.Contains(execPath, "/opt/homebrew/") ||
++	       strings.Contains(execPath, "homebrew")
++}
++
+ func init() {
+ 	rootCmd.AddCommand(selfupdateCmd)
+ }
+diff --git a/cmd/status.go b/cmd/status.go
+index b9af4dc..45e9bcb 100644
+--- a/cmd/status.go
++++ b/cmd/status.go
+@@ -43,7 +43,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
+ 
+ 	m, _ := manifest.Load(repoRoot)
+ 	if len(m.Subclones) == 0 {

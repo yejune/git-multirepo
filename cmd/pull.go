@@ -18,14 +18,14 @@ import (
 
 var pullCmd = &cobra.Command{
 	Use:   "pull [path]",
-	Short: "Pull latest changes for subs",
-	Long: `Pull latest changes for registered subs.
+	Short: "Pull latest changes for workspaces",
+	Long: `Pull latest changes for registered workspaces.
 
 Examples:
-  git workspace pull              # Pull all subs with confirmation
-  git workspace pull apps/admin   # Pull specific sub only
+  git workspace pull              # Pull all workspaces with confirmation
+  git workspace pull apps/admin   # Pull specific workspace only
 
-For each sub:
+For each workspace:
   1. Shows current branch and uncommitted files
   2. Asks for confirmation (Y/n)
   3. Pulls from remote
@@ -53,19 +53,19 @@ func runPull(cmd *cobra.Command, args []string) error {
 	// Set language from manifest
 	i18n.SetLanguage(m.GetLanguage())
 
-	if len(m.Subclones) == 0 {
+	if len(m.Workspaces) == 0 {
 		fmt.Println(i18n.T("no_subs_registered"))
 		return nil
 	}
 
-	// Filter subs if path argument provided
-	var subsToProcess []manifest.Subclone
+	// Filter workspaces if path argument provided
+	var workspacesToProcess []manifest.WorkspaceEntry
 	if len(args) > 0 {
 		targetPath := args[0]
 		found := false
-		for _, sub := range m.Subclones {
-			if sub.Path == targetPath {
-				subsToProcess = []manifest.Subclone{sub}
+		for _, workspace := range m.Workspaces {
+			if workspace.Path == targetPath {
+				workspacesToProcess = []manifest.WorkspaceEntry{workspace}
 				found = true
 				break
 			}
@@ -74,17 +74,17 @@ func runPull(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf(i18n.T("sub_not_found", targetPath))
 		}
 	} else {
-		subsToProcess = m.Subclones
+		workspacesToProcess = m.Workspaces
 	}
 
 	reader := bufio.NewReader(os.Stdin)
 
-	for _, sub := range subsToProcess {
-		fullPath := filepath.Join(repoRoot, sub.Path)
+	for _, workspace := range workspacesToProcess {
+		fullPath := filepath.Join(repoRoot, workspace.Path)
 
 		// Check if directory exists and is a git repo
 		if !git.IsRepo(fullPath) {
-			fmt.Printf("%s:\n", sub.Path)
+			fmt.Printf("%s:\n", workspace.Path)
 			fmt.Printf("  %s\n", i18n.T("not_git_repo"))
 			fmt.Println()
 			continue
@@ -93,7 +93,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 		// Get current branch
 		branch, err := git.GetCurrentBranch(fullPath)
 		if err != nil {
-			fmt.Printf("%s:\n", sub.Path)
+			fmt.Printf("%s:\n", workspace.Path)
 			fmt.Printf("  %s\n", i18n.T("failed_get_branch", err))
 			fmt.Println()
 			continue
@@ -106,7 +106,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 		totalUncommitted := len(modifiedFiles) + len(untrackedFiles) + len(stagedFiles)
 
 		// Show current status
-		fmt.Printf("%s (%s):\n", sub.Path, branch)
+		fmt.Printf("%s (%s):\n", workspace.Path, branch)
 		if totalUncommitted > 0 {
 			fmt.Printf("  %s\n", i18n.T("uncommitted_files", totalUncommitted))
 		} else {
@@ -137,7 +137,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 		}
 
 		// Handle keep files before pulling
-		keepFiles := sub.GetKeepFiles()
+		keepFiles := workspace.Keep
 		if len(keepFiles) > 0 {
 			if err := handleKeepFiles(fullPath, branch, keepFiles); err != nil {
 				fmt.Printf("  Keep file handling failed: %v\n", err)
@@ -149,7 +149,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 		// Pull from remote
 		if err := git.Pull(fullPath); err != nil {
 			fmt.Printf("  %s\n", i18n.T("pull_failed"))
-			fmt.Printf("  %s\n", i18n.T("run_status", sub.Path))
+			fmt.Printf("  %s\n", i18n.T("run_status", workspace.Path))
 			fmt.Println()
 			continue
 		}

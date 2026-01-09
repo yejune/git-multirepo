@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/yejune/git-workspace/internal/git"
@@ -13,18 +12,17 @@ import (
 
 var statusCmd = &cobra.Command{
 	Use:   "status [path]",
-	Short: "Show detailed status of subs",
-	Long: `Display comprehensive status information for each sub:
+	Short: "Show detailed status of workspaces",
+	Long: `Display comprehensive status information for each workspace:
 
 Examples:
-  git sub status              # Show status for all subs
-  git sub status apps/admin   # Show status for specific sub
+  git workspace status              # Show status for all workspaces
+  git workspace status apps/admin   # Show status for specific workspace
 
-For each sub, shows:
+For each workspace, shows:
   1. Local Status (modified, untracked, staged files)
   2. Remote Status (commits behind/ahead)
-  3. Skip Files (remote changes detection)
-  4. How to resolve (step-by-step commands)`,
+  3. How to resolve (step-by-step commands)`,
 	RunE: runStatus,
 }
 
@@ -46,19 +44,19 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	// Set language from manifest
 	i18n.SetLanguage(m.GetLanguage())
 
-	if len(m.Subclones) == 0 {
+	if len(m.Workspaces) == 0 {
 		fmt.Println(i18n.T("no_subs_registered"))
 		return nil
 	}
 
-	// Filter subs if path argument provided
-	var subsToProcess []manifest.Subclone
+	// Filter workspaces if path argument provided
+	var workspacesToProcess []manifest.WorkspaceEntry
 	if len(args) > 0 {
 		targetPath := args[0]
 		found := false
-		for _, sub := range m.Subclones {
-			if sub.Path == targetPath {
-				subsToProcess = []manifest.Subclone{sub}
+		for _, workspace := range m.Workspaces {
+			if workspace.Path == targetPath {
+				workspacesToProcess = []manifest.WorkspaceEntry{workspace}
 				found = true
 				break
 			}
@@ -67,13 +65,13 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf(i18n.T("sub_not_found", targetPath))
 		}
 	} else {
-		subsToProcess = m.Subclones
+		workspacesToProcess = m.Workspaces
 	}
 
-	for _, sc := range subsToProcess {
-		fullPath := filepath.Join(repoRoot, sc.Path)
+	for _, ws := range workspacesToProcess {
+		fullPath := filepath.Join(repoRoot, ws.Path)
 
-		fmt.Printf("%s", sc.Path)
+		fmt.Printf("%s", ws.Path)
 
 		if !git.IsRepo(fullPath) {
 			fmt.Printf(" %s\n", i18n.T("not_cloned"))
@@ -160,36 +158,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Println()
 
-		// Section 3: Skip Files
-		if len(sc.Skip) > 0 {
-			fmt.Printf("  %s\n", i18n.T("skip_files"))
-
-			hasSkipChanges := false
-			for _, skipFile := range sc.Skip {
-				diff, err := git.GetSkipFileRemoteChanges(fullPath, skipFile)
-				if err == nil && strings.TrimSpace(diff) != "" {
-					hasSkipChanges = true
-					fmt.Printf("    %s\n", i18n.T("skip_file_changed", skipFile))
-
-					// Show a simple summary of changes
-					if strings.Contains(diff, "+") && !strings.Contains(diff, "-") {
-						fmt.Printf("      %s\n", i18n.T("skip_remote_added"))
-					} else if strings.Contains(diff, "-") && !strings.Contains(diff, "+") {
-						fmt.Printf("      %s\n", i18n.T("skip_remote_removed"))
-					} else if strings.Contains(diff, "+") && strings.Contains(diff, "-") {
-						fmt.Printf("      %s\n", i18n.T("skip_remote_modified"))
-					}
-					fmt.Printf("      %s\n", i18n.T("skip_file_protected"))
-				}
-			}
-
-			if !hasSkipChanges {
-				fmt.Printf("    %s\n", i18n.T("no_remote_changes"))
-			}
-			fmt.Println()
-		}
-
-		// Section 4: How to resolve
+		// Section 3: How to resolve
 		needsResolution := hasLocalChanges || behindCount > 0 || aheadCount > 0
 
 		if needsResolution {
@@ -198,7 +167,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 			if hasLocalChanges {
 				fmt.Printf("    %s\n", i18n.T("resolve_commit"))
-				fmt.Printf("       cd %s\n", sc.Path)
+				fmt.Printf("       cd %s\n", ws.Path)
 				if len(stagedFiles) > 0 || len(modifiedFiles) > 0 {
 					fmt.Println("       git add .")
 					fmt.Println("       git commit -m \"your message\"")
@@ -211,36 +180,15 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 			if behindCount > 0 {
 				fmt.Printf("    %s\n", i18n.T("resolve_pull"))
-				fmt.Printf("       git sub pull %s\n", sc.Path)
+				fmt.Printf("       git workspace pull %s\n", ws.Path)
 				fmt.Println()
 			}
 
 			if aheadCount > 0 {
 				fmt.Printf("    %s\n", i18n.T("resolve_push"))
-				fmt.Printf("       cd %s\n", sc.Path)
+				fmt.Printf("       cd %s\n", ws.Path)
 				fmt.Println("       git push")
 				fmt.Println()
-			}
-
-			if len(sc.Skip) > 0 {
-				hasSkipChanges := false
-				for _, skipFile := range sc.Skip {
-					diff, err := git.GetSkipFileRemoteChanges(fullPath, skipFile)
-					if err == nil && strings.TrimSpace(diff) != "" {
-						hasSkipChanges = true
-						break
-					}
-				}
-
-				if hasSkipChanges {
-					fmt.Printf("    %s\n", i18n.T("resolve_skip"))
-					fmt.Printf("       cd %s\n", sc.Path)
-					fmt.Println("       git update-index --no-skip-worktree <file>")
-					fmt.Println("       git pull")
-					fmt.Printf("       %s\n", i18n.T("resolve_review"))
-					fmt.Println("       git update-index --skip-worktree <file>")
-					fmt.Println()
-				}
 			}
 		} else {
 			fmt.Printf("  %s\n", i18n.T("no_action_needed"))

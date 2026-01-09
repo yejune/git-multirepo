@@ -134,12 +134,12 @@ func TestCheckForUpdate(t *testing.T) {
 	t.Run("newer version available", func(t *testing.T) {
 		mockClient := &MockHTTPClient{
 			DoFunc: func(req *http.Request) (*http.Response, error) {
-				body := `{
+				body := `[{
 					"tag_name": "v2.0.0",
 					"assets": [
 						{"name": "git-workspace-darwin-arm64", "browser_download_url": "https://example.com/download"}
 					]
-				}`
+				}]`
 				return &http.Response{
 					StatusCode: http.StatusOK,
 					Body:       io.NopCloser(strings.NewReader(body)),
@@ -165,7 +165,7 @@ func TestCheckForUpdate(t *testing.T) {
 	t.Run("already up to date", func(t *testing.T) {
 		mockClient := &MockHTTPClient{
 			DoFunc: func(req *http.Request) (*http.Response, error) {
-				body := `{"tag_name": "v1.0.0", "assets": []}`
+				body := `[{"tag_name": "v1.0.0", "assets": []}]`
 				return &http.Response{
 					StatusCode: http.StatusOK,
 					Body:       io.NopCloser(strings.NewReader(body)),
@@ -273,7 +273,7 @@ func TestCheckForUpdate(t *testing.T) {
 	t.Run("invalid version format", func(t *testing.T) {
 		mockClient := &MockHTTPClient{
 			DoFunc: func(req *http.Request) (*http.Response, error) {
-				body := `{"tag_name": "", "assets": []}`
+				body := `[{"tag_name": "", "assets": []}]`
 				return &http.Response{
 					StatusCode: http.StatusOK,
 					Body:       io.NopCloser(strings.NewReader(body)),
@@ -608,7 +608,7 @@ func TestGetLatestRelease(t *testing.T) {
 				capturedReq = req
 				return &http.Response{
 					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(strings.NewReader(`{"tag_name": "v1.0.0"}`)),
+					Body:       io.NopCloser(strings.NewReader(`[{"tag_name": "v1.0.0"}]`)),
 				}, nil
 			},
 		}

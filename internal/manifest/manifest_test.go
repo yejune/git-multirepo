@@ -12,8 +12,8 @@ func TestLoadEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
-	if len(m.Subclones) != 0 {
-		t.Errorf("expected 0 subclones, got %d", len(m.Subclones))
+	if len(m.Workspaces) != 0 {
+		t.Errorf("expected 0 workspaces, got %d", len(m.Workspaces))
 	}
 }
 
@@ -33,7 +33,7 @@ func TestLoadInvalidYAML(t *testing.T) {
 	dir := t.TempDir()
 	manifestPath := filepath.Join(dir, FileName)
 	// Write invalid YAML content
-	os.WriteFile(manifestPath, []byte("subclones: [invalid yaml\n  - broken"), 0644)
+	os.WriteFile(manifestPath, []byte("workspaces: [invalid yaml\n  - broken"), 0644)
 
 	_, err := Load(dir)
 	if err == nil {
@@ -41,21 +41,21 @@ func TestLoadInvalidYAML(t *testing.T) {
 	}
 }
 
-func TestLoadNilSubclones(t *testing.T) {
+func TestLoadNilWorkspaces(t *testing.T) {
 	dir := t.TempDir()
 	manifestPath := filepath.Join(dir, FileName)
-	// Write YAML without subclones field (will be nil)
+	// Write YAML without workspaces field (will be nil)
 	os.WriteFile(manifestPath, []byte("# empty manifest\n"), 0644)
 
 	m, err := Load(dir)
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
-	if m.Subclones == nil {
-		t.Error("Subclones should be initialized to empty slice, not nil")
+	if m.Workspaces == nil {
+		t.Error("Workspaces should be initialized to empty slice, not nil")
 	}
-	if len(m.Subclones) != 0 {
-		t.Errorf("expected 0 subclones, got %d", len(m.Subclones))
+	if len(m.Workspaces) != 0 {
+		t.Errorf("expected 0 workspaces, got %d", len(m.Workspaces))
 	}
 }
 
@@ -63,7 +63,7 @@ func TestSaveAndLoad(t *testing.T) {
 	dir := t.TempDir()
 
 	m := &Manifest{
-		Subclones: []Subclone{
+		Workspaces: []WorkspaceEntry{
 			{Path: "packages/sub-a", Repo: "https://github.com/test/sub-a.git"},
 			{Path: "libs/sub-b", Repo: "https://github.com/test/sub-b.git"},
 		},
@@ -85,34 +85,34 @@ func TestSaveAndLoad(t *testing.T) {
 		t.Fatalf("Load failed: %v", err)
 	}
 
-	if len(loaded.Subclones) != 2 {
-		t.Errorf("expected 2 subclones, got %d", len(loaded.Subclones))
+	if len(loaded.Workspaces) != 2 {
+		t.Errorf("expected 2 workspaces, got %d", len(loaded.Workspaces))
 	}
 
-	if loaded.Subclones[0].Path != "packages/sub-a" {
-		t.Errorf("expected path packages/sub-a, got %s", loaded.Subclones[0].Path)
+	if loaded.Workspaces[0].Path != "packages/sub-a" {
+		t.Errorf("expected path packages/sub-a, got %s", loaded.Workspaces[0].Path)
 	}
 
 	// Branch field removed in v0.1.0
 }
 
 func TestAddAndRemove(t *testing.T) {
-	m := &Manifest{Subclones: []Subclone{}}
+	m := &Manifest{Workspaces: []WorkspaceEntry{}}
 
 	m.Add("test/path", "https://github.com/test/repo.git")
 
-	if len(m.Subclones) != 1 {
-		t.Errorf("expected 1 subclone, got %d", len(m.Subclones))
+	if len(m.Workspaces) != 1 {
+		t.Errorf("expected 1 workspace, got %d", len(m.Workspaces))
 	}
 
 	if !m.Exists("test/path") {
-		t.Error("expected subclone to exist")
+		t.Error("expected workspace to exist")
 	}
 
-	// Verify the subclone was added correctly
+	// Verify the workspace was added correctly
 	sc := m.Find("test/path")
 	if sc == nil {
-		t.Fatal("expected to find subclone")
+		t.Fatal("expected to find workspace")
 	}
 	if sc.Repo != "https://github.com/test/repo.git" {
 		t.Errorf("expected repo https://github.com/test/repo.git, got %s", sc.Repo)
@@ -123,7 +123,7 @@ func TestAddAndRemove(t *testing.T) {
 	}
 
 	if m.Exists("test/path") {
-		t.Error("expected subclone to not exist")
+		t.Error("expected workspace to not exist")
 	}
 
 	if m.Remove("nonexistent") {
@@ -133,7 +133,7 @@ func TestAddAndRemove(t *testing.T) {
 
 func TestFind(t *testing.T) {
 	m := &Manifest{
-		Subclones: []Subclone{
+		Workspaces: []WorkspaceEntry{
 			{Path: "a", Repo: "repo-a"},
 			{Path: "b", Repo: "repo-b"},
 		},
@@ -141,7 +141,7 @@ func TestFind(t *testing.T) {
 
 	sc := m.Find("a")
 	if sc == nil {
-		t.Fatal("expected to find subclone")
+		t.Fatal("expected to find workspace")
 	}
 	if sc.Repo != "repo-a" {
 		t.Errorf("expected repo-a, got %s", sc.Repo)
@@ -158,7 +158,7 @@ func TestSaveWriteError(t *testing.T) {
 	manifestPath := filepath.Join(dir, FileName)
 	os.MkdirAll(manifestPath, 0755)
 
-	m := &Manifest{Subclones: []Subclone{{Path: "test", Repo: "repo"}}}
+	m := &Manifest{Workspaces: []WorkspaceEntry{{Path: "test", Repo: "repo"}}}
 	err := Save(dir, m)
 	if err == nil {
 		t.Error("Save should fail when manifest path is a directory")
@@ -175,7 +175,7 @@ func TestSaveMarshalError(t *testing.T) {
 	}
 	defer func() { marshalFunc = originalMarshal }()
 
-	m := &Manifest{Subclones: []Subclone{{Path: "test", Repo: "repo"}}}
+	m := &Manifest{Workspaces: []WorkspaceEntry{{Path: "test", Repo: "repo"}}}
 	err := Save(dir, m)
 	if err == nil {
 		t.Error("Save should fail when marshal fails")

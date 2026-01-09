@@ -2,14 +2,19 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/yejune/git-workspace/internal/update"
 )
 
 var selfupdateCmd = &cobra.Command{
-	Use:   "selfupdate",
-	Short: "Update git-workspace to the latest version",
+	Use:     "selfupdate",
+	Aliases: []string{"self-update"},
+	Short:   "Update git-workspace to the latest version",
 	Long: `Check for and install the latest version of git-workspace.
 
 This command checks GitHub releases for a newer version and automatically
@@ -30,6 +35,21 @@ var updaterFactory = func(version string) *update.Updater {
 }
 
 func runSelfupdate(cmd *cobra.Command, args []string) error {
+	// Check if installed via Homebrew
+	execPath, err := os.Executable()
+	if err == nil {
+		execPath, _ = filepath.EvalSymlinks(execPath)
+		if strings.Contains(execPath, "/homebrew/") || strings.Contains(execPath, "/Cellar/") || strings.Contains(execPath, "/Homebrew/") {
+			fmt.Println("Detected Homebrew installation")
+			fmt.Println("Running: brew upgrade git-workspace")
+
+			brewCmd := exec.Command("brew", "upgrade", "git-workspace")
+			brewCmd.Stdout = os.Stdout
+			brewCmd.Stderr = os.Stderr
+			return brewCmd.Run()
+		}
+	}
+
 	fmt.Printf("Current version: %s\n", Version)
 	fmt.Println("Checking for updates...")
 
@@ -41,17 +61,19 @@ func runSelfupdate(cmd *cobra.Command, args []string) error {
 	}
 
 	if !hasUpdate {
+		fmt.Printf("\nLatest version:  %s\n", Version)
 		fmt.Println("Already up to date.")
 		return nil
 	}
 
-	fmt.Printf("New version available: %s\n", release.TagName)
-	fmt.Println("Downloading...")
+	fmt.Printf("\nLatest version:  %s\n", release.TagName)
+	fmt.Println()
+	fmt.Println("Downloading and installing...")
 
 	if err := updater.Update(release); err != nil {
 		return fmt.Errorf("failed to update: %w", err)
 	}
 
-	fmt.Printf("Successfully updated to %s\n", release.TagName)
+	fmt.Printf("✓ Successfully updated to %s\n", release.TagName)
 	return nil
 }

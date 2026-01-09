@@ -123,10 +123,9 @@ func TestRunSync(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	// Create manifest with ignore/skip patterns
+	// Create manifest with ignore patterns (Skip field removed in v0.1.0)
 	m := &manifest.Manifest{
 		Ignore: []string{"*.log"},
-		Skip:   []string{"config.local"},
 	}
 	manifest.Save(dir, m)
 
@@ -299,6 +298,8 @@ func TestRunRoot(t *testing.T) {
 	})
 }
 
+// TestRunPush removed - push functionality was removed in v0.1.0
+/*
 func TestRunPush(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
@@ -347,7 +348,11 @@ func TestRunPush(t *testing.T) {
 		}
 	})
 }
+*/
 
+
+// TestPushSubclone removed - push functionality was removed in v0.1.0
+/*
 func TestPushSubclone(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
@@ -359,6 +364,8 @@ func TestPushSubclone(t *testing.T) {
 		}
 	})
 }
+*/
+
 
 // TestSyncRecursive removed - syncRecursive flag was removed from command line in v0.1.0
 // Recursive functionality still exists in code but is not exposed as a flag
@@ -528,6 +535,8 @@ func TestSyncEmpty(t *testing.T) {
 	})
 }
 
+// TestPushAllNoSubclones removed - push functionality was removed in v0.1.0
+/*
 func TestPushAllNoSubclones(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
@@ -541,6 +550,8 @@ func TestPushAllNoSubclones(t *testing.T) {
 		}
 	})
 }
+*/
+
 
 // TestInitAlreadyInstalled removed - init command was removed in v0.1.0
 
@@ -640,9 +651,7 @@ func TestRunAddNotInGitRepo(t *testing.T) {
 		err := runAdd(addCmd, []string{"https://github.com/user/repo.git", "test"})
 		if err == nil {
 			t.Error("should error when not in a git repository")
-		}
-		if !strings.Contains(err.Error(), "not in a git repository") {
-			t.Errorf("expected 'not in a git repository' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "not in a git repository") {			t.Errorf("expected 'not in a git repository' error, got: %v", err)
 		}
 	})
 }
@@ -657,9 +666,7 @@ func TestRunListNotInGitRepo(t *testing.T) {
 		err := runList(listCmd, []string{})
 		if err == nil {
 			t.Error("should error when not in a git repository")
-		}
-		if !strings.Contains(err.Error(), "not in a git repository") {
-			t.Errorf("expected 'not in a git repository' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "not in a git repository") {			t.Errorf("expected 'not in a git repository' error, got: %v", err)
 		}
 	})
 }
@@ -674,9 +681,7 @@ func TestRunSyncNotInGitRepo(t *testing.T) {
 		err := runSync(syncCmd, []string{})
 		if err == nil {
 			t.Error("should error when not in a git repository")
-		}
-		if !strings.Contains(err.Error(), "not in a git repository") {
-			t.Errorf("expected 'not in a git repository' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "not in a git repository") {			t.Errorf("expected 'not in a git repository' error, got: %v", err)
 		}
 	})
 }
@@ -691,13 +696,13 @@ func TestRunStatusNotInGitRepo(t *testing.T) {
 		err := runStatus(statusCmd, []string{})
 		if err == nil {
 			t.Error("should error when not in a git repository")
-		}
-		if !strings.Contains(err.Error(), "not in a git repository") {
-			t.Errorf("expected 'not in a git repository' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "not in a git repository") {			t.Errorf("expected 'not in a git repository' error, got: %v", err)
 		}
 	})
 }
 
+// TestRunPushNotInGitRepo removed - push functionality was removed in v0.1.0
+/*
 func TestRunPushNotInGitRepo(t *testing.T) {
 	dir := t.TempDir()
 	originalDir, _ := os.Getwd()
@@ -709,12 +714,12 @@ func TestRunPushNotInGitRepo(t *testing.T) {
 		err := runPush(pushCmd, []string{"test"})
 		if err == nil {
 			t.Error("should error when not in a git repository")
-		}
-		if !strings.Contains(err.Error(), "not in a git repository") {
-			t.Errorf("expected 'not in a git repository' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "not in a git repository") {			t.Errorf("expected 'not in a git repository' error, got: %v", err)
 		}
 	})
 }
+*/
+
 
 func TestRunRemoveNotInGitRepo(t *testing.T) {
 	dir := t.TempDir()
@@ -727,9 +732,7 @@ func TestRunRemoveNotInGitRepo(t *testing.T) {
 		err := runRemove(removeCmd, []string{"test"})
 		if err == nil {
 			t.Error("should error when not in a git repository")
-		}
-		if !strings.Contains(err.Error(), "not in a git repository") {
-			t.Errorf("expected 'not in a git repository' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "not in a git repository") {			t.Errorf("expected 'not in a git repository' error, got: %v", err)
 		}
 	})
 }
@@ -746,9 +749,7 @@ func TestRunRootNotInGitRepo(t *testing.T) {
 		err := runRoot(rootCmd, []string{"https://github.com/user/repo.git"})
 		if err == nil {
 			t.Error("should error when not in a git repository")
-		}
-		if !strings.Contains(err.Error(), "not in a git repository") {
-			t.Errorf("expected 'not in a git repository' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "not in a git repository") {			t.Errorf("expected 'not in a git repository' error, got: %v", err)
 		}
 	})
 }
@@ -791,7 +792,7 @@ func TestStatusWithNotCloned(t *testing.T) {
 
 	// Create manifest with subclone that doesn't exist
 	m := &manifest.Manifest{
-		Subclones: []manifest.Subclone{
+		Workspaces: []manifest.WorkspaceEntry{
 			{Path: "packages/notcloned", Repo: "https://github.com/user/repo.git"},
 		},
 	}
@@ -841,6 +842,8 @@ func TestSyncDirRecursiveWithError(t *testing.T) {
 
 // TestListDirRecursiveWithNestedError removed - listRecursive flag not exposed in v0.1.0
 
+// TestPushSubcloneWithPushError removed - push functionality was removed in v0.1.0
+/*
 func TestPushSubcloneWithPushError(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
 	defer cleanup()
@@ -870,14 +873,18 @@ func TestPushSubcloneWithPushError(t *testing.T) {
 		}
 	})
 }
+*/
 
+
+// TestPushAllSkipsNotCloned removed - push functionality was removed in v0.1.0
+/*
 func TestPushAllSkipsNotCloned(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
 	defer cleanup()
 
 	// Create manifest with subclone that doesn't exist
 	m := &manifest.Manifest{
-		Subclones: []manifest.Subclone{
+		Workspaces: []manifest.WorkspaceEntry{
 			{Path: "packages/notcloned", Repo: "https://github.com/user/repo.git"},
 		},
 	}
@@ -896,6 +903,8 @@ func TestPushAllSkipsNotCloned(t *testing.T) {
 		}
 	})
 }
+*/
+
 
 func TestRemoveWithManifestSaveError(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
@@ -919,9 +928,7 @@ func TestRemoveWithManifestSaveError(t *testing.T) {
 		err := runRemove(removeCmd, []string{"packages/remove-error"})
 		if err == nil {
 			t.Error("should error when manifest cannot be saved")
-		}
-		if !strings.Contains(err.Error(), "failed to save manifest") {
-			t.Errorf("expected 'failed to save manifest' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "failed to save manifest") {			t.Errorf("expected 'failed to save manifest' error, got: %v", err)
 		}
 	})
 }
@@ -936,9 +943,7 @@ func TestAddWithInvalidRepo(t *testing.T) {
 		err := runAdd(addCmd, []string{"/nonexistent/repo", "packages/invalid"})
 		if err == nil {
 			t.Error("should error with invalid repo URL")
-		}
-		if !strings.Contains(err.Error(), "failed to clone") {
-			t.Errorf("expected 'failed to clone' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "failed to clone") {			t.Errorf("expected 'failed to clone' error, got: %v", err)
 		}
 	})
 }
@@ -954,9 +959,7 @@ func TestRootWithInvalidRepo(t *testing.T) {
 		err := runRoot(rootCmd, []string{"/nonexistent/repo"})
 		if err == nil {
 			t.Error("should error with invalid repo URL")
-		}
-		if !strings.Contains(err.Error(), "failed to clone") {
-			t.Errorf("expected 'failed to clone' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "failed to clone") {			t.Errorf("expected 'failed to clone' error, got: %v", err)
 		}
 	})
 }
@@ -978,15 +981,13 @@ func TestRootDuplicatePath(t *testing.T) {
 		err := runRoot(rootCmd, []string{remoteRepo})
 		if err == nil {
 			t.Error("should error with duplicate path")
-		}
-		if !strings.Contains(err.Error(), "already exists") {
-			t.Errorf("expected 'already exists' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "already exists") {			t.Errorf("expected 'already exists' error, got: %v", err)
 		}
 
 		// Verify manifest unchanged
 		m, _ := manifest.Load(dir)
 		count := 0
-		for _, sc := range m.Subclones {
+		for _, sc := range m.Workspaces {
 			if sc.Path == "duplicate" {
 				count++
 			}
@@ -1081,6 +1082,8 @@ func TestStatusWithHasChangesError(t *testing.T) {
 	})
 }
 
+// TestPushAllWithHasChangesError removed - push functionality was removed in v0.1.0
+/*
 func TestPushAllWithHasChangesError(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
 	defer cleanup()
@@ -1110,6 +1113,8 @@ func TestPushAllWithHasChangesError(t *testing.T) {
 		}
 	})
 }
+*/
+
 
 // TestInitUninstallSuccess removed - init command was removed in v0.1.0
 
@@ -1217,7 +1222,7 @@ func TestSyncWithMkdirError(t *testing.T) {
 	os.WriteFile(blockingFile, []byte("file"), 0644)
 
 	m := &manifest.Manifest{
-		Subclones: []manifest.Subclone{
+		Workspaces: []manifest.WorkspaceEntry{
 			{Path: "blocking/subdir/test", Repo: "https://github.com/user/repo.git"},
 		},
 	}
@@ -1243,7 +1248,7 @@ func TestSyncGitignoreUpdateError(t *testing.T) {
 
 	// Create manifest
 	m := &manifest.Manifest{
-		Subclones: []manifest.Subclone{
+		Workspaces: []manifest.WorkspaceEntry{
 			{Path: "packages/gitignore-error", Repo: remoteRepo},
 		},
 	}
@@ -1337,6 +1342,8 @@ func TestRemoveWithFileDeleteError(t *testing.T) {
 	})
 }
 
+// TestPushAllWithPushError removed - push functionality was removed in v0.1.0
+/*
 func TestPushAllWithPushError(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
 	defer cleanup()
@@ -1366,6 +1373,8 @@ func TestPushAllWithPushError(t *testing.T) {
 		}
 	})
 }
+*/
+
 
 func TestAddWithManifestSaveError(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
@@ -1374,7 +1383,7 @@ func TestAddWithManifestSaveError(t *testing.T) {
 	remoteRepo := setupRemoteRepo(t)
 
 	// Create initial manifest to ensure it exists
-	m := &manifest.Manifest{Subclones: []manifest.Subclone{}}
+	m := &manifest.Manifest{Workspaces: []manifest.WorkspaceEntry{}}
 	manifest.Save(dir, m)
 
 	// Make manifest read-only
@@ -1388,9 +1397,7 @@ func TestAddWithManifestSaveError(t *testing.T) {
 		err := runAdd(addCmd, []string{remoteRepo, "packages/manifest-save-error"})
 		if err == nil {
 			t.Error("should error when manifest cannot be saved")
-		}
-		if !strings.Contains(err.Error(), "failed to save manifest") {
-			t.Errorf("expected 'failed to save manifest' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "failed to save manifest") {			t.Errorf("expected 'failed to save manifest' error, got: %v", err)
 		}
 	})
 }
@@ -1413,9 +1420,7 @@ func TestAddWithGitignoreError(t *testing.T) {
 		err := runAdd(addCmd, []string{remoteRepo, "packages/gitignore-error"})
 		if err == nil {
 			t.Error("should error when gitignore cannot be updated")
-		}
-		if !strings.Contains(err.Error(), "failed to update .gitignore") {
-			t.Errorf("expected 'failed to update .gitignore' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "failed to update .gitignore") {			t.Errorf("expected 'failed to update .gitignore' error, got: %v", err)
 		}
 	})
 }
@@ -1439,9 +1444,7 @@ func TestRootWithGitignoreError(t *testing.T) {
 		err := runRoot(rootCmd, []string{remoteRepo})
 		if err == nil {
 			t.Error("should error when gitignore cannot be updated")
-		}
-		if !strings.Contains(err.Error(), "failed to update .gitignore") {
-			t.Errorf("expected 'failed to update .gitignore' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "failed to update .gitignore") {			t.Errorf("expected 'failed to update .gitignore' error, got: %v", err)
 		}
 	})
 }
@@ -1453,7 +1456,7 @@ func TestRootWithManifestSaveError(t *testing.T) {
 	remoteRepo := setupRemoteRepo(t)
 
 	// Create initial manifest
-	m := &manifest.Manifest{Subclones: []manifest.Subclone{}}
+	m := &manifest.Manifest{Workspaces: []manifest.WorkspaceEntry{}}
 	manifest.Save(dir, m)
 
 	// Make manifest read-only
@@ -1468,9 +1471,7 @@ func TestRootWithManifestSaveError(t *testing.T) {
 		err := runRoot(rootCmd, []string{remoteRepo})
 		if err == nil {
 			t.Error("should error when manifest cannot be saved")
-		}
-		if !strings.Contains(err.Error(), "failed to save manifest") {
-			t.Errorf("expected 'failed to save manifest' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "failed to save manifest") {			t.Errorf("expected 'failed to save manifest' error, got: %v", err)
 		}
 	})
 }
@@ -1517,9 +1518,7 @@ func TestListDirWithManifestLoadError(t *testing.T) {
 		err := runList(listCmd, []string{})
 		if err == nil {
 			t.Error("should error with invalid manifest")
-		}
-		if !strings.Contains(err.Error(), "failed to load manifest") {
-			t.Errorf("expected 'failed to load manifest' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "failed to load manifest") {			t.Errorf("expected 'failed to load manifest' error, got: %v", err)
 		}
 	})
 }
@@ -1536,9 +1535,7 @@ func TestSyncDirWithManifestLoadError(t *testing.T) {
 		err := runSync(syncCmd, []string{})
 		if err == nil {
 			t.Error("should error with invalid manifest")
-		}
-		if !strings.Contains(err.Error(), "failed to load manifest") {
-			t.Errorf("expected 'failed to load manifest' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "failed to load manifest") {			t.Errorf("expected 'failed to load manifest' error, got: %v", err)
 		}
 	})
 }
@@ -1555,13 +1552,13 @@ func TestStatusWithManifestLoadError(t *testing.T) {
 		err := runStatus(statusCmd, []string{})
 		if err == nil {
 			t.Error("should error with invalid manifest")
-		}
-		if !strings.Contains(err.Error(), "failed to load manifest") {
-			t.Errorf("expected 'failed to load manifest' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "failed to load manifest") {			t.Errorf("expected 'failed to load manifest' error, got: %v", err)
 		}
 	})
 }
 
+// TestPushWithManifestLoadError removed - push functionality was removed in v0.1.0
+/*
 func TestPushWithManifestLoadError(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
 	defer cleanup()
@@ -1576,12 +1573,12 @@ func TestPushWithManifestLoadError(t *testing.T) {
 		err := runPush(pushCmd, []string{"test"})
 		if err == nil {
 			t.Error("should error with invalid manifest")
-		}
-		if !strings.Contains(err.Error(), "failed to load manifest") {
-			t.Errorf("expected 'failed to load manifest' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "failed to load manifest") {			t.Errorf("expected 'failed to load manifest' error, got: %v", err)
 		}
 	})
 }
+*/
+
 
 func TestRemoveWithManifestLoadError(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
@@ -1597,9 +1594,7 @@ func TestRemoveWithManifestLoadError(t *testing.T) {
 		err := runRemove(removeCmd, []string{"test"})
 		if err == nil {
 			t.Error("should error with invalid manifest")
-		}
-		if !strings.Contains(err.Error(), "failed to load manifest") {
-			t.Errorf("expected 'failed to load manifest' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "failed to load manifest") {			t.Errorf("expected 'failed to load manifest' error, got: %v", err)
 		}
 	})
 }
@@ -1621,9 +1616,7 @@ func TestRootWithManifestLoadError(t *testing.T) {
 		err := runRoot(rootCmd, []string{remoteRepo})
 		if err == nil {
 			t.Error("should error with invalid manifest")
-		}
-		if !strings.Contains(err.Error(), "failed to load manifest") {
-			t.Errorf("expected 'failed to load manifest' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "failed to load manifest") {			t.Errorf("expected 'failed to load manifest' error, got: %v", err)
 		}
 	})
 }
@@ -1644,9 +1637,7 @@ func TestAddWithManifestLoadError(t *testing.T) {
 		err := runAdd(addCmd, []string{remoteRepo, "test"})
 		if err == nil {
 			t.Error("should error with invalid manifest")
-		}
-		if !strings.Contains(err.Error(), "failed to load manifest") {
-			t.Errorf("expected 'failed to load manifest' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "failed to load manifest") {			t.Errorf("expected 'failed to load manifest' error, got: %v", err)
 		}
 	})
 }
@@ -1706,9 +1697,7 @@ func TestAddWithMkdirError(t *testing.T) {
 		err := runAdd(addCmd, []string{remoteRepo, "blocked/subdir/test"})
 		if err == nil {
 			t.Error("should error when directory cannot be created")
-		}
-		if !strings.Contains(err.Error(), "failed to create directory") {
-			t.Errorf("expected 'failed to create directory' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "failed to create directory") {			t.Errorf("expected 'failed to create directory' error, got: %v", err)
 		}
 	})
 }
@@ -1731,9 +1720,7 @@ func TestRootWithMkdirError(t *testing.T) {
 		err := runRoot(rootCmd, []string{remoteRepo})
 		if err == nil {
 			t.Error("should error when directory cannot be created")
-		}
-		if !strings.Contains(err.Error(), "failed to create directory") {
-			t.Errorf("expected 'failed to create directory' error, got: %v", err)
+		} else if !strings.Contains(err.Error(), "failed to create directory") {			t.Errorf("expected 'failed to create directory' error, got: %v", err)
 		}
 	})
 }

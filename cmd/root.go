@@ -15,7 +15,7 @@ import (
 
 var (
 	// Version is set at build time via -ldflags
-	Version = "dev"
+	Version = "0.2.11"
 	// Root command flags
 	rootBranch string
 	rootPath   string
@@ -35,6 +35,7 @@ Quick usage:
   git workspace clone -b develop https://github.com/user/repo.git
 
 Commands:
+  add      Add a new workspace (alias: clone)
   sync     Clone or pull all workspaces
   list     List all registered workspaces
   remove   Remove a workspace
