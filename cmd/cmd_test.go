@@ -166,17 +166,17 @@ func TestRunList(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/list-test"})
 
-	t.Run("list subclones", func(t *testing.T) {
+	t.Run("list workspaces", func(t *testing.T) {
 		output := captureOutput(func() {
 			runList(listCmd, []string{})
 		})
 
 		if !strings.Contains(output, "packages/list-test") {
-			t.Errorf("output should contain subclone path, got: %s", output)
+			t.Errorf("output should contain workspace path, got: %s", output)
 		}
 	})
 }
@@ -187,17 +187,17 @@ func TestRunStatus(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/status-test"})
 
-	t.Run("status shows subclone info", func(t *testing.T) {
+	t.Run("status shows workspace info", func(t *testing.T) {
 		output := captureOutput(func() {
 			runStatus(statusCmd, []string{})
 		})
 
 		if !strings.Contains(output, "packages/status-test") {
-			t.Errorf("output should contain subclone path, got: %s", output)
+			t.Errorf("output should contain workspace path, got: %s", output)
 		}
 		if !strings.Contains(output, "Clean") {
 			t.Errorf("output should show clean status, got: %s", output)
@@ -211,11 +211,11 @@ func TestRunRemove(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/remove-test"})
 
-	t.Run("remove subclone with force", func(t *testing.T) {
+	t.Run("remove workspace with force", func(t *testing.T) {
 		removeForce = true
 		removeKeepFiles = false
 
@@ -227,12 +227,12 @@ func TestRunRemove(t *testing.T) {
 		// Check manifest
 		m, _ := manifest.Load(dir)
 		if m.Exists("packages/remove-test") {
-			t.Error("subclone should be removed from manifest")
+			t.Error("workspace should be removed from manifest")
 		}
 
 		// Check files deleted
 		if _, err := os.Stat(filepath.Join(dir, "packages/remove-test")); !os.IsNotExist(err) {
-			t.Error("subclone files should be deleted")
+			t.Error("workspace files should be deleted")
 		}
 	})
 
@@ -240,7 +240,7 @@ func TestRunRemove(t *testing.T) {
 		removeForce = true
 		err := runRemove(removeCmd, []string{"non/existent"})
 		if err == nil {
-			t.Error("should error on non-existent subclone")
+			t.Error("should error on non-existent workspace")
 		}
 	})
 }
@@ -269,7 +269,7 @@ func TestRunRoot(t *testing.T) {
 		// Check manifest
 		m, _ := manifest.Load(dir)
 		if !m.Exists(expectedName) {
-			t.Errorf("subclone %s should be in manifest", expectedName)
+			t.Errorf("workspace %s should be in manifest", expectedName)
 		}
 	})
 
@@ -286,7 +286,7 @@ func TestRunRoot(t *testing.T) {
 		// Check manifest
 		m, _ := manifest.Load(dir)
 		if !m.Exists("custom/path") {
-			t.Error("subclone custom/path should be in manifest")
+			t.Error("workspace custom/path should be in manifest")
 		}
 	})
 
@@ -307,7 +307,7 @@ func TestRunPush(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone first
+	// Create workspace first
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/push-test"})
 
@@ -320,16 +320,16 @@ func TestRunPush(t *testing.T) {
 		}
 	})
 
-	t.Run("push non-existent subclone", func(t *testing.T) {
+	t.Run("push non-existent workspace", func(t *testing.T) {
 		pushAll = false
 
 		err := runPush(pushCmd, []string{"non/existent"})
 		if err == nil {
-			t.Error("should error on non-existent subclone")
+			t.Error("should error on non-existent workspace")
 		}
 	})
 
-	t.Run("push specific subclone", func(t *testing.T) {
+	t.Run("push specific workspace", func(t *testing.T) {
 		pushAll = false
 
 		// This will fail because no remote is set up for push
@@ -379,7 +379,7 @@ func TestRemoveKeepFiles(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/keep-test"})
 
@@ -419,11 +419,11 @@ func TestRemoveKeepFiles(t *testing.T) {
 // 			t.Fatalf("add with branch failed: %v", err)
 // 		}
 // 
-// 		// Check manifest exists and has subclone (Branch field removed in v0.1.0)
+// 		// Check manifest exists and has workspace (Branch field removed in v0.1.0)
 // 		m, _ := manifest.Load(dir)
 // 		sc := m.Find("packages/branch-test")
 // 		if sc == nil {
-// 			t.Error("should record subclone in manifest")
+// 			t.Error("should record workspace in manifest")
 // 		}
 // 		// Branch field was removed from manifest in v0.1.0
 // 		_ = dir
@@ -447,17 +447,17 @@ func TestRootWithPathFlag(t *testing.T) {
 	})
 }
 
-func TestStatusWithModifiedSubclone(t *testing.T) {
+func TestStatusWithModifiedWorkspace(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
 	defer cleanup()
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/modified-test"})
 
-	// Modify a file in subclone
+	// Modify a file in workspace
 	os.WriteFile(filepath.Join(dir, "packages/modified-test/modified.txt"), []byte("change"), 0644)
 
 	t.Run("status shows modified", func(t *testing.T) {
@@ -466,28 +466,28 @@ func TestStatusWithModifiedSubclone(t *testing.T) {
 		})
 
 		if !strings.Contains(output, "uncommitted") {
-			t.Log("status shows subclone state")
+			t.Log("status shows workspace state")
 		}
 	})
 }
 
-func TestSyncWithExistingSubclone(t *testing.T) {
+func TestSyncWithExistingWorkspace(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone first
+	// Create workspace first
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/existing"})
 
-	t.Run("sync existing subclone pulls", func(t *testing.T) {
+	t.Run("sync existing workspace pulls", func(t *testing.T) {
 		output := captureOutput(func() {
 			runSync(syncCmd, []string{})
 		})
 
 		if !strings.Contains(output, "Pulling") && !strings.Contains(output, "Updated") {
-			t.Log("sync executed for existing subclone")
+			t.Log("sync executed for existing workspace")
 		}
 	})
 }
@@ -496,13 +496,13 @@ func TestListEmpty(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	t.Run("list with no subclones", func(t *testing.T) {
+	t.Run("list with no workspaces", func(t *testing.T) {
 		output := captureOutput(func() {
 			runList(listCmd, []string{})
 		})
 
 		if !strings.Contains(output, "No workspaces registered") {
-			t.Errorf("should show no subclones message, got: %s", output)
+			t.Errorf("should show no workspaces message, got: %s", output)
 		}
 	})
 }
@@ -511,13 +511,13 @@ func TestStatusEmpty(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	t.Run("status with no subclones", func(t *testing.T) {
+	t.Run("status with no workspaces", func(t *testing.T) {
 		output := captureOutput(func() {
 			runStatus(statusCmd, []string{})
 		})
 
 		if !strings.Contains(output, "No workspaces registered") {
-			t.Errorf("should show no subclones message, got: %s", output)
+			t.Errorf("should show no workspaces message, got: %s", output)
 		}
 	})
 }
@@ -526,13 +526,13 @@ func TestSyncEmpty(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	t.Run("sync with no subclones", func(t *testing.T) {
+	t.Run("sync with no workspaces", func(t *testing.T) {
 		output := captureOutput(func() {
 			runSync(syncCmd, []string{})
 		})
 
 		if !strings.Contains(output, "No workspace repositories found") || !strings.Contains(output, "No .workspaces found") {
-			t.Errorf("should show no subclones message, got: %s", output)
+			t.Errorf("should show no workspaces message, got: %s", output)
 		}
 	})
 }
@@ -543,12 +543,12 @@ func TestPushAllNoSubclones(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	t.Run("push all with no subclones", func(t *testing.T) {
+	t.Run("push all with no workspaces", func(t *testing.T) {
 		pushAll = true
 
 		err := runPush(pushCmd, []string{})
 		if err == nil {
-			t.Error("should error with no subclones")
+			t.Error("should error with no workspaces")
 		}
 	})
 }
@@ -563,7 +563,7 @@ func TestRemoveWithChanges(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/changes-test"})
 
@@ -764,7 +764,7 @@ func TestListDirWithError(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/test"})
 
@@ -783,7 +783,7 @@ func TestListDirWithError(t *testing.T) {
 
 		// Should show "not cloned" status since .git is not a directory
 		if !strings.Contains(output, "packages/test") {
-			t.Errorf("output should contain subclone path, got: %s", output)
+			t.Errorf("output should contain workspace path, got: %s", output)
 		}
 	})
 }
@@ -792,7 +792,7 @@ func TestStatusWithNotCloned(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	// Create manifest with subclone that doesn't exist
+	// Create manifest with workspace that doesn't exist
 	m := &manifest.Manifest{
 		Workspaces: []manifest.WorkspaceEntry{
 			{Path: "packages/notcloned", Repo: "https://github.com/user/repo.git"},
@@ -821,7 +821,7 @@ func TestSyncDirRecursiveWithError(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/nested"})
 
@@ -852,7 +852,7 @@ func TestPushSubcloneWithPushError(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/push-error"})
 
@@ -884,7 +884,7 @@ func TestPushAllSkipsNotCloned(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	// Create manifest with subclone that doesn't exist
+	// Create manifest with workspace that doesn't exist
 	m := &manifest.Manifest{
 		Workspaces: []manifest.WorkspaceEntry{
 			{Path: "packages/notcloned", Repo: "https://github.com/user/repo.git"},
@@ -899,9 +899,9 @@ func TestPushAllSkipsNotCloned(t *testing.T) {
 			runPush(pushCmd, []string{})
 		})
 
-		// Should show "No subclones needed pushing" since the only one isn't cloned
+		// Should show "No workspaces needed pushing" since the only one isn't cloned
 		if !strings.Contains(output, "No workspaces") {
-			t.Errorf("should show 'No subclones needed pushing', got: %s", output)
+			t.Errorf("should show 'No workspaces needed pushing', got: %s", output)
 		}
 	})
 }
@@ -914,7 +914,7 @@ func TestRemoveWithManifestSaveError(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/remove-error"})
 
@@ -973,7 +973,7 @@ func TestRootDuplicatePath(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create first subclone
+	// Create first workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "duplicate"})
 
@@ -1007,7 +1007,7 @@ func TestSyncPullError(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/pull-error"})
 
@@ -1033,7 +1033,7 @@ func TestStatusWithBranchError(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/branch-error"})
 
@@ -1060,7 +1060,7 @@ func TestStatusWithHasChangesError(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/changes-error"})
 
@@ -1093,7 +1093,7 @@ func TestPushAllWithHasChangesError(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/haschanges-error"})
 
@@ -1148,19 +1148,19 @@ func TestStatusWithConfiguredBranch(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone with branch
+	// Create workspace with branch
 	cloneBranch = "main"
 	runClone(cloneCmd, []string{remoteRepo, "packages/branch-configured"})
 	cloneBranch = ""
 
-	t.Run("status shows subclone info", func(t *testing.T) {
+	t.Run("status shows workspace info", func(t *testing.T) {
 		output := captureOutput(func() {
 			runStatus(statusCmd, []string{})
 		})
 
 		// Branch field removed in v0.1.0, just verify status works
 		if !strings.Contains(output, "packages/branch-configured") {
-			t.Errorf("output should show subclone path, got: %s", output)
+			t.Errorf("output should show workspace path, got: %s", output)
 		}
 		_ = dir // use dir to avoid unused variable warning
 	})
@@ -1172,19 +1172,19 @@ func TestListWithBranch(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone with branch
+	// Create workspace with branch
 	cloneBranch = "main"
 	runClone(cloneCmd, []string{remoteRepo, "packages/with-branch"})
 	cloneBranch = ""
 
-	t.Run("list shows subclone info", func(t *testing.T) {
+	t.Run("list shows workspace info", func(t *testing.T) {
 		output := captureOutput(func() {
 			runList(listCmd, []string{})
 		})
 
 		// Branch field removed in v0.1.0, just verify list works
 		if !strings.Contains(output, "packages/with-branch") {
-			t.Errorf("output should show subclone path, got: %s", output)
+			t.Errorf("output should show workspace path, got: %s", output)
 		}
 		_ = dir
 	})
@@ -1196,7 +1196,7 @@ func TestListWithModifiedSubclone(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/modified"})
 
@@ -1220,7 +1220,7 @@ func TestSyncWithMkdirError(t *testing.T) {
 	dir, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	// Create manifest with subclone in a path where parent is a file (not directory)
+	// Create manifest with workspace in a path where parent is a file (not directory)
 	blockingFile := filepath.Join(dir, "blocking")
 	os.WriteFile(blockingFile, []byte("file"), 0644)
 
@@ -1281,7 +1281,7 @@ func TestRemoveGitignoreError(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/gitignore-remove"})
 
@@ -1316,7 +1316,7 @@ func TestRemoveWithFileDeleteError(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/delete-error"})
 
@@ -1353,7 +1353,7 @@ func TestPushAllWithPushError(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/push-all-error"})
 
@@ -1657,11 +1657,11 @@ func TestRemoveNoChangesNoForce(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/no-changes"})
 
-	t.Run("remove without force on clean subclone", func(t *testing.T) {
+	t.Run("remove without force on clean workspace", func(t *testing.T) {
 		removeForce = false
 		removeKeepFiles = false
 
@@ -1681,7 +1681,7 @@ func TestRemoveNoChangesNoForce(t *testing.T) {
 		// Check that it was removed
 		m, _ := manifest.Load(dir)
 		if m.Exists("packages/no-changes") {
-			t.Error("subclone should be removed from manifest")
+			t.Error("workspace should be removed from manifest")
 		}
 	})
 }
@@ -1752,7 +1752,7 @@ func TestListDirHasChangesError(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/haschanges-err"})
 
@@ -1820,7 +1820,7 @@ func TestRemoveWithNoForceNoKeepFiles(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/prompt-test"})
 
@@ -1849,7 +1849,7 @@ func TestRemoveUserDeclines(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/decline-test"})
 
@@ -1878,10 +1878,10 @@ func TestRemoveUserDeclines(t *testing.T) {
 			t.Errorf("output should show 'Cancelled', got: %s", output)
 		}
 
-		// Subclone should still exist
+		// Workspace should still exist
 		m, _ := manifest.Load(dir)
 		if !m.Exists("packages/decline-test") {
-			t.Error("subclone should still exist in manifest after declining")
+			t.Error("workspace should still exist in manifest after declining")
 		}
 	})
 }
@@ -1893,7 +1893,7 @@ func TestRemoveUserConfirms(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/confirm-test"})
 
@@ -1922,10 +1922,10 @@ func TestRemoveUserConfirms(t *testing.T) {
 			t.Errorf("output should show 'Removed', got: %s", output)
 		}
 
-		// Subclone should be removed
+		// Workspace should be removed
 		m, _ := manifest.Load(dir)
 		if m.Exists("packages/confirm-test") {
-			t.Error("subclone should be removed from manifest after confirming")
+			t.Error("workspace should be removed from manifest after confirming")
 		}
 	})
 }
@@ -1937,7 +1937,7 @@ func TestRemoveUserConfirmsUppercase(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/confirm-upper"})
 
@@ -1966,10 +1966,10 @@ func TestRemoveUserConfirmsUppercase(t *testing.T) {
 			t.Errorf("output should show 'Removed', got: %s", output)
 		}
 
-		// Subclone should be removed
+		// Workspace should be removed
 		m, _ := manifest.Load(dir)
 		if m.Exists("packages/confirm-upper") {
-			t.Error("subclone should be removed from manifest after confirming")
+			t.Error("workspace should be removed from manifest after confirming")
 		}
 	})
 }
@@ -2010,7 +2010,7 @@ func TestListDirRecursiveError(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/recursive-err"})
 
@@ -2122,7 +2122,7 @@ func TestListDirHasChangesReturnsError(t *testing.T) {
 
 	remoteRepo := setupRemoteRepo(t)
 
-	// Create subclone
+	// Create workspace
 	cloneBranch = ""
 	runClone(cloneCmd, []string{remoteRepo, "packages/error-status"})
 
@@ -2139,7 +2139,7 @@ func TestListDirHasChangesReturnsError(t *testing.T) {
 	os.RemoveAll(filepath.Join(subPath, ".git", "refs"))
 
 	// Also remove parent .git to prevent git from finding it
-	// This forces git to fail in the subclone
+	// This forces git to fail in the workspace
 	parentGit := filepath.Join(dir, ".git")
 	parentGitBackup := filepath.Join(dir, ".git_backup")
 	os.Rename(parentGit, parentGitBackup)
@@ -2179,7 +2179,7 @@ func TestRootCmdExecute(t *testing.T) {
 			}
 		})
 
-		// Should show no subclones message
+		// Should show no workspaces message
 		if !strings.Contains(output, "No workspaces") {
 			t.Logf("output: %s", output)
 		}
