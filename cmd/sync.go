@@ -128,7 +128,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 				// Directory exists with files - init git in place
 				fmt.Printf("    %s\n", i18n.T("initializing_git"))
 
-				if err := git.InitRepo(fullPath, ws.Repo, ws.Branch, ws.Commit); err != nil {
+				if err := git.InitRepo(fullPath, ws.Repo, ws.Branch); err != nil {
 					fmt.Printf("    %s\n", i18n.T("failed_initialize", err))
 					issues++
 					continue
@@ -170,27 +170,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		// Auto-update commit hash in .workspaces
-		commit, err := git.GetCurrentCommit(fullPath)
-		if err == nil && commit != ws.Commit {
-			// Check if pushed
-			hasUnpushed, checkErr := git.HasUnpushedCommits(fullPath)
-			if checkErr == nil {
-				if hasUnpushed {
-					fmt.Printf("    %s\n", i18n.T("has_unpushed", commit[:7]))
-					fmt.Printf("      %s\n", i18n.T("push_first", ws.Path))
-				} else {
-					// Update .workspaces with pushed commit
-					oldCommit := "none"
-					if ws.Commit != "" {
-						oldCommit = ws.Commit[:7]
-					}
-					m.UpdateCommit(ws.Path, commit)
-					fmt.Printf("    %s\n", i18n.T("updated_commit", oldCommit, commit[:7]))
-				}
-			}
-		}
-
 		// Verify and fix .gitignore entry
 		if !hasGitignoreEntry(repoRoot, ws.Path) {
 			fmt.Printf("    %s\n", i18n.T("adding_to_gitignore"))
@@ -223,6 +202,21 @@ func runSync(cmd *cobra.Command, args []string) error {
 	// Save manifest if any commits were updated
 	if err := manifest.Save(repoRoot, m); err != nil {
 		return fmt.Errorf("failed to save manifest: %w", err)
+	}
+
+	// 6. Check if archiving should run (24 hours check)
+	workspacesDir := filepath.Join(repoRoot, ".workspaces")
+	if backup.ShouldRunArchive(workspacesDir) {
+		backupDir := filepath.Join(workspacesDir, "backup")
+		if err := backup.ArchiveOldBackups(backupDir); err != nil {
+			fmt.Printf("\n⚠️  Archive failed: %v\n", err)
+			// Don't fail the entire sync if archiving fails
+		} else {
+			// Update check time only on success
+			if err := backup.UpdateArchiveCheck(workspacesDir); err != nil {
+				fmt.Printf("\n⚠️  Failed to update archive check time: %v\n", err)
+			}
+		}
 	}
 
 	// Summary
@@ -294,12 +288,6 @@ func scanForWorkspaces(repoRoot string) ([]manifest.WorkspaceEntry, error) {
 			return filepath.SkipDir
 		}
 
-		commit, err := git.GetCurrentCommit(workspacePath)
-		if err != nil {
-			fmt.Println(i18n.T("failed_get_commit", relPath, err))
-			return filepath.SkipDir
-		}
-
 		// Detect modified files for auto-keep
 		var keepFiles []string
 		// Get skip-worktree files (these are the keep files)
@@ -322,10 +310,9 @@ func scanForWorkspaces(repoRoot string) ([]manifest.WorkspaceEntry, error) {
 		fmt.Printf("  %s\n", i18n.T("found_sub", relPath))
 
 		workspaces = append(workspaces, manifest.WorkspaceEntry{
-			Path:   relPath,
-			Repo:   repo,
-			Commit: commit,
-			Keep:   keepFiles,
+			Path: relPath,
+			Repo: repo,
+			Keep: keepFiles,
 		})
 
 		// Skip descending into this workspace's subdirectories

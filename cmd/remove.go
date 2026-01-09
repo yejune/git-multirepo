@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/yejune/git-workspace/internal/git"
@@ -63,6 +65,28 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// NEW: Modified files warning
+	if !removeKeepFiles && git.IsRepo(fullPath) {
+		modified, _ := git.GetModifiedFiles(fullPath)
+		if len(modified) > 0 {
+			fmt.Printf("⚠️  WARNING: %d modified files will be deleted:\n", len(modified))
+			for i, f := range modified {
+				if i < 5 {
+					fmt.Printf("    - %s\n", f)
+				}
+			}
+			if len(modified) > 5 {
+				fmt.Printf("    ... and %d more\n", len(modified)-5)
+			}
+			fmt.Println()
+		}
+	}
+
+	// NEW: Backup option suggestion
+	if !removeKeepFiles && !removeForce {
+		fmt.Printf("💡 Tip: Use '--keep-files' to keep files\n\n")
+	}
+
 	// Confirm deletion
 	if !removeKeepFiles && !removeForce {
 		fmt.Printf("Remove workspace '%s' and delete its files? [y/N] ", path)
@@ -89,6 +113,17 @@ func runRemove(cmd *cobra.Command, args []string) error {
 
 	// Delete files
 	if !removeKeepFiles {
+		// Create backup before deletion
+		backupDir := filepath.Join(repoRoot, ".workspaces", "backup", "removed")
+		timestamp := time.Now().Format("20060102_150405")
+		backupPath := filepath.Join(backupDir, timestamp, path)
+
+		fmt.Printf("📦 Creating backup before removal...\n")
+		if err := copyDirectory(fullPath, backupPath); err != nil {
+			return fmt.Errorf("failed to backup workspace: %w", err)
+		}
+		fmt.Printf("✓ Backup created: .workspaces/backup/removed/%s/%s\n", timestamp, path)
+
 		if err := os.RemoveAll(fullPath); err != nil {
 			return fmt.Errorf("failed to delete files: %w", err)
 		}
@@ -98,4 +133,39 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// copyDirectory recursively copies directory
+func copyDirectory(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		relPath, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		dstPath := filepath.Join(dst, relPath)
+
+		if info.IsDir() {
+			return os.MkdirAll(dstPath, info.Mode())
+		}
+
+		// Copy file
+		srcFile, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer srcFile.Close()
+
+		dstFile, err := os.Create(dstPath)
+		if err != nil {
+			return err
+		}
+		defer dstFile.Close()
+
+		_, err = io.Copy(dstFile, srcFile)
+		return err
+	})
 }

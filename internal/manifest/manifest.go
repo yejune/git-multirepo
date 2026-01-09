@@ -20,8 +20,8 @@ type WorkspaceEntry struct {
 	Path   string   `yaml:"path"`
 	Repo   string   `yaml:"repo"`
 	Branch string   `yaml:"branch,omitempty"`
-	Commit string   `yaml:"commit,omitempty"`
 	Keep   []string `yaml:"keep,omitempty"`
+	Commit string   `yaml:"commit,omitempty"` // Deprecated: kept for backward compatibility, no longer used
 }
 
 // Manifest represents the .workspaces file structure
@@ -113,16 +113,6 @@ func (m *Manifest) Remove(path string) bool {
 	return false
 }
 
-// UpdateCommit updates the commit hash for a workspace
-func (m *Manifest) UpdateCommit(path, commit string) bool {
-	for i, ws := range m.Workspaces {
-		if ws.Path == path {
-			m.Workspaces[i].Commit = commit
-			return true
-		}
-	}
-	return false
-}
 
 // Find finds a workspace by path
 func (m *Manifest) Find(path string) *WorkspaceEntry {

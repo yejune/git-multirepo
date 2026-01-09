@@ -11,7 +11,7 @@ const postCheckoutHook = `#!/bin/sh
 # Automatically syncs subs after checkout
 
 if command -v git-workspace >/dev/null 2>&1; then
-    git-workspace sync --recursive
+    git-workspace sync
 fi
 `
 
@@ -50,16 +50,8 @@ if ! command -v git-workspace >/dev/null 2>&1; then
     exit 0
 fi
 
-# Get relative path of sub from parent
-SUB_PATH=$(realpath --relative-to="$PARENT_ROOT" "$SUB_ROOT" 2>/dev/null || \
-           python3 -c "import os.path; print(os.path.relpath('$SUB_ROOT', '$PARENT_ROOT'))" 2>/dev/null)
-
-if [ -z "$SUB_PATH" ]; then
-    exit 0
-fi
-
-# Update parent's .workspaces (only if pushed)
-cd "$PARENT_ROOT" && git-workspace sync --update-manifest-only --quiet 2>/dev/null || true
+# Update parent's .workspaces
+cd "$PARENT_ROOT" && git-workspace sync 2>/dev/null || true
 `
 
 // Install installs git hooks in the repository

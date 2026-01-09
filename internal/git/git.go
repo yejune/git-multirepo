@@ -25,7 +25,7 @@ func Clone(repo, path, branch string) error {
 
 // InitRepo initializes a git repository in an existing directory with source files
 // This is used when source files are already tracked by parent but .git is missing
-func InitRepo(path, repo, branch, commit string) error {
+func InitRepo(path, repo, branch string) error {
 	// Create a temporary directory for bare clone
 	tempDir, err := os.MkdirTemp("", "git-workspace-*")
 	if err != nil {
@@ -56,16 +56,6 @@ func InitRepo(path, repo, branch, commit string) error {
 	cmd = exec.Command("git", "-C", path, "config", "--bool", "core.bare", "false")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to configure: %w", err)
-	}
-
-	// Checkout specific commit if provided
-	if commit != "" {
-		cmd = exec.Command("git", "-C", path, "checkout", commit)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to checkout %s: %w", commit[:7], err)
-		}
 	}
 
 	// Reset index to match HEAD (don't touch working tree files)

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/yejune/git-workspace/internal/backup"
 	"github.com/yejune/git-workspace/internal/git"
 	"github.com/yejune/git-workspace/internal/i18n"
 	"github.com/yejune/git-workspace/internal/interactive"
@@ -206,10 +207,22 @@ func handleKeepFiles(wsPath, branch string, keepFiles []string) error {
 
 			switch choice {
 			case 0: // Update origin and reapply patch (recommended)
+				// Backup original file
+				backupDir := filepath.Join(filepath.Dir(wsPath), ".workspaces", "backup")
+				if err := backup.CreateFileBackup(filepath.Join(wsPath, file), backupDir, filepath.Dir(wsPath)); err != nil {
+					fmt.Printf("  ⚠ Backup failed: %v\n", err)
+					continue
+				}
+
 				// Create patch from current local changes
 				if err := patch.Create(wsPath, file, patchPath); err != nil {
 					fmt.Printf("  ⚠ Failed to create patch: %v\n", err)
 					continue
+				}
+
+				// Backup patch file
+				if err := backup.CreatePatchBackup(patchPath, backupDir); err != nil {
+					fmt.Printf("  ⚠ Patch backup failed: %v\n", err)
 				}
 
 				// Reset file to remote version
@@ -218,11 +231,23 @@ func handleKeepFiles(wsPath, branch string, keepFiles []string) error {
 					continue
 				}
 
+				// Check patch for conflicts before applying
+				hasConflicts, err := patch.Check(wsPath, patchPath)
+				if err != nil {
+					fmt.Printf("  ⚠ Failed to check patch: %v\n", err)
+					fmt.Printf("  ℹ Original backed up, patch saved to: %s\n", patchPath)
+					continue
+				}
+				if hasConflicts {
+					fmt.Printf("  ⚠ Patch has conflicts\n")
+					fmt.Printf("  ℹ Original backed up, patch saved to: %s\n", patchPath)
+					continue
+				}
+
 				// Apply patch
 				if err := patch.Apply(wsPath, patchPath); err != nil {
 					fmt.Printf("  ⚠ Failed to apply patch: %v\n", err)
-					fmt.Printf("  ℹ Patch saved to: %s\n", patchPath)
-					fmt.Printf("  ℹ You can apply it manually later\n")
+					fmt.Printf("  ℹ Original backed up\n")
 				} else {
 					fmt.Printf("  ✓ Updated %s and reapplied local changes\n", file)
 					// Clean up successful patch
