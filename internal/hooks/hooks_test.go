@@ -163,7 +163,9 @@ func TestUninstall(t *testing.T) {
 		os.WriteFile(hookPath, []byte(postCheckoutHook), 0755)
 
 		// Make hooks directory read-only to prevent removal
-		os.Chmod(hooksDir, 0555)
+		if err := os.Chmod(hooksDir, 0555); err != nil {
+			t.Skipf("cannot change directory permissions: %v", err)
+		}
 		defer os.Chmod(hooksDir, 0755) // Cleanup
 
 		err := Uninstall(dir)
