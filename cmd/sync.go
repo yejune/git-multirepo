@@ -302,12 +302,19 @@ func scanForWorkspaces(repoRoot string) ([]manifest.WorkspaceEntry, error) {
 
 		// Detect modified files for auto-keep
 		var keepFiles []string
-		modifiedFiles, err := git.GetModifiedFiles(workspacePath)
-		if err == nil && len(modifiedFiles) > 0 {
-			// Clean up file list
-			for _, file := range modifiedFiles {
-				if strings.TrimSpace(file) != "" {
-					keepFiles = append(keepFiles, file)
+		// Get skip-worktree files (these are the keep files)
+		skipFiles, err := git.ListSkipWorktree(workspacePath)
+		if err == nil && len(skipFiles) > 0 {
+			keepFiles = skipFiles
+		} else {
+			// Fallback: detect modified files for first-time setup
+			modifiedFiles, err := git.GetModifiedFiles(workspacePath)
+			if err == nil && len(modifiedFiles) > 0 {
+				// Clean up file list
+				for _, file := range modifiedFiles {
+					if strings.TrimSpace(file) != "" {
+						keepFiles = append(keepFiles, file)
+					}
 				}
 			}
 		}
