@@ -102,7 +102,7 @@ func runClone(cmd *cobra.Command, args []string) error {
 	}
 
 	// Install post-commit hook in workspace
-	if err := hooks.InstallSubHook(fullPath); err != nil {
+	if err := hooks.InstallWorkspaceHook(fullPath); err != nil {
 		fmt.Printf("⚠ Failed to install hook: %v\n", err)
 	}
 

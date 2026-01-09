@@ -99,9 +99,9 @@ func IsInstalled(repoRoot string) bool {
 	return string(content) == postCheckoutHook
 }
 
-// InstallSubHook installs post-commit hook in a sub repository
-func InstallSubHook(subPath string) error {
-	hooksDir := filepath.Join(subPath, ".git", "hooks")
+// InstallWorkspaceHook installs post-commit hook in a workspace repository
+func InstallWorkspaceHook(workspacePath string) error {
+	hooksDir := filepath.Join(workspacePath, ".git", "hooks")
 
 	// Ensure hooks directory exists
 	if err := os.MkdirAll(hooksDir, 0755); err != nil {
@@ -113,9 +113,9 @@ func InstallSubHook(subPath string) error {
 	return os.WriteFile(hookPath, []byte(postCommitHook), 0755)
 }
 
-// IsSubHookInstalled checks if the sub hook is installed
-func IsSubHookInstalled(subPath string) bool {
-	hookPath := filepath.Join(subPath, ".git", "hooks", "post-commit")
+// IsWorkspaceHookInstalled checks if the workspace hook is installed
+func IsWorkspaceHookInstalled(workspacePath string) bool {
+	hookPath := filepath.Join(workspacePath, ".git", "hooks", "post-commit")
 	content, err := os.ReadFile(hookPath)
 	if err != nil {
 		return false

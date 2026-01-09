@@ -197,9 +197,9 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 
 		// Install/update post-commit hook in workspace
-		if !hooks.IsSubHookInstalled(fullPath) {
+		if !hooks.IsWorkspaceHookInstalled(fullPath) {
 			fmt.Printf("    %s\n", i18n.T("installing_hook"))
-			if err := hooks.InstallSubHook(fullPath); err != nil {
+			if err := hooks.InstallWorkspaceHook(fullPath); err != nil {
 				fmt.Printf("    %s\n", i18n.T("hook_failed", err))
 			} else {
 				fmt.Printf("    %s\n", i18n.T("hook_installed"))
