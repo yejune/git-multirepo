@@ -164,6 +164,21 @@ Show detailed status of all workspaces.
 git workspace status  # shows branch, commits ahead/behind, modified files
 ```
 
+### `git workspace branch [workspace-path]`
+
+Show current branch for workspaces.
+
+```bash
+git workspace branch                    # show all workspace branches
+git workspace branch packages/lib       # show branch of specific workspace
+```
+
+Displays:
+- Workspace path
+- Repository URL
+- Current branch
+- Remote tracking branch (if exists)
+
 ### `git workspace pull [workspace-path]`
 
 Pull latest changes from remote for workspaces.
