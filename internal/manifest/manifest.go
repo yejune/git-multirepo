@@ -136,3 +136,22 @@ func (m *Manifest) GetLanguage() string {
 	}
 	return m.Language
 }
+
+// FindParent searches for .git.multirepo file in parent directories
+// Returns the directory containing the manifest, or empty string if not found
+func FindParent(startDir string) (string, error) {
+	current := startDir
+	for {
+		manifestPath := filepath.Join(current, FileName)
+		if _, err := os.Stat(manifestPath); err == nil {
+			return current, nil
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			// Reached filesystem root without finding manifest
+			return "", nil
+		}
+		current = parent
+	}
+}
