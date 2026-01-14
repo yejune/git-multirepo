@@ -593,28 +593,16 @@ func processKeepFiles(repoRoot, workspacePath string, keepFiles []string, issues
 }
 
 // printKeepFileList prints keep file list with indentation
-// Shows first 10 files and "... (N more files)" if more than 10
+// In verbose mode, shows all files without limit
 func printKeepFileList(keepFiles []string) {
-	const maxDisplay = 10
 	const indent = "      "
 
 	if len(keepFiles) == 0 {
 		return
 	}
 
-	// Display up to maxDisplay files
-	displayCount := len(keepFiles)
-	if displayCount > maxDisplay {
-		displayCount = maxDisplay
-	}
-
-	for i := 0; i < displayCount; i++ {
-		fmt.Printf("%s• %s\n", indent, keepFiles[i])
-	}
-
-	// Show remaining count
-	if len(keepFiles) > maxDisplay {
-		remaining := len(keepFiles) - maxDisplay
-		fmt.Printf("%s... (%d more files)\n", indent, remaining)
+	// In verbose mode, display all files
+	for _, file := range keepFiles {
+		fmt.Printf("%s• %s\n", indent, file)
 	}
 }

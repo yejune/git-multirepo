@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -43,24 +44,36 @@ func TestPrintKeepFileList(t *testing.T) {
 			wantMore:  false,
 		},
 		{
-			name: "11 files (should truncate)",
+			name: "11 files (should show all)",
 			files: []string{
 				"file1.txt", "file2.txt", "file3.txt", "file4.txt", "file5.txt",
 				"file6.txt", "file7.txt", "file8.txt", "file9.txt", "file10.txt",
 				"file11.txt",
 			},
-			wantLines: 11, // 10 files + 1 "... (N more)" line
-			wantMore:  true,
+			wantLines: 11, // all 11 files
+			wantMore:  false,
 		},
 		{
-			name: "15 files (should show 10 + more)",
+			name: "15 files (should show all)",
 			files: []string{
 				"file1.txt", "file2.txt", "file3.txt", "file4.txt", "file5.txt",
 				"file6.txt", "file7.txt", "file8.txt", "file9.txt", "file10.txt",
 				"file11.txt", "file12.txt", "file13.txt", "file14.txt", "file15.txt",
 			},
-			wantLines: 11, // 10 files + 1 "... (N more)" line
-			wantMore:  true,
+			wantLines: 15, // all 15 files
+			wantMore:  false,
+		},
+		{
+			name: "88 files (should show all)",
+			files: func() []string {
+				files := make([]string, 88)
+				for i := 0; i < 88; i++ {
+					files[i] = fmt.Sprintf("file%d.txt", i+1)
+				}
+				return files
+			}(),
+			wantLines: 88, // all 88 files
+			wantMore:  false,
 		},
 	}
 
@@ -108,15 +121,15 @@ func TestPrintKeepFileList(t *testing.T) {
 				}
 			}
 
-			// Verify specific content for truncation test
+			// Verify specific content
 			if tt.wantMore {
-				expectedCount := len(tt.files) - 10
+				// Test case for truncation (if we add it back later)
 				expectedMsg := "more files"
 				if !strings.Contains(output, expectedMsg) {
 					t.Errorf("expected to find %q in output, but didn't\nOutput:\n%s", expectedMsg, output)
 				}
-				// Verify the count
-				for i := 0; i < 10; i++ {
+				// Verify first 10 files are shown
+				for i := 0; i < 10 && i < len(tt.files); i++ {
 					if !strings.Contains(output, tt.files[i]) {
 						t.Errorf("expected to find %q in output (first 10 files), but didn't", tt.files[i])
 					}
@@ -127,9 +140,16 @@ func TestPrintKeepFileList(t *testing.T) {
 						t.Errorf("file %q should not appear in truncated output", tt.files[i])
 					}
 				}
-				// Verify count message
-				if expectedCount > 0 && !strings.Contains(output, "... (") {
-					t.Errorf("expected count message format '... (N more files)' not found")
+			} else if len(tt.files) > 10 {
+				// Verbose mode: verify ALL files are shown
+				for i, file := range tt.files {
+					if !strings.Contains(output, file) {
+						t.Errorf("expected to find file %q (index %d) in output, but didn't\nOutput:\n%s", file, i, output)
+					}
+				}
+				// Verify NO "more files" message
+				if strings.Contains(output, "more files") {
+					t.Errorf("should NOT contain 'more files' message in verbose mode\nOutput:\n%s", output)
 				}
 			}
 		})
