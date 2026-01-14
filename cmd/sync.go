@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -59,9 +61,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	// 2. If no workspaces in manifest, scan for existing sub repos
+	// Use ScanRootDir instead of RepoRoot to support workspace subdirectory sync
 	if len(ctx.Manifest.Workspaces) == 0 {
 		fmt.Println(i18n.T("no_gitsubs_found"))
-		discovered, scanErr := scanForWorkspaces(ctx.RepoRoot)
+		discovered, scanErr := scanForWorkspaces(ctx.ScanRootDir, ctx.RepoRoot)
 		if scanErr != nil {
 			return fmt.Errorf(i18n.T("failed_scan"), scanErr)
 		}
@@ -254,20 +257,22 @@ type workspaceDiscovery struct {
 }
 
 // discoverWorkspaces sequentially scans for .git directories and sends them to a channel
-func discoverWorkspaces(repoRoot string) (<-chan workspaceDiscovery, error) {
+// scanRoot: directory to start scanning from
+// manifestRoot: parent directory containing .git.multirepo (for calculating relative paths)
+func discoverWorkspaces(scanRoot, manifestRoot string) (<-chan workspaceDiscovery, error) {
 	discoveries := make(chan workspaceDiscovery, 100)
 
 	go func() {
 		defer close(discoveries)
 
-		// Walk the directory tree
-		filepath.Walk(repoRoot, func(path string, info os.FileInfo, err error) error {
+		// Walk the directory tree starting from scanRoot
+		filepath.Walk(scanRoot, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return nil // Skip errors
 			}
 
 			// Skip parent's .git directory
-			if path == filepath.Join(repoRoot, ".git") {
+			if path == filepath.Join(manifestRoot, ".git") {
 				return filepath.SkipDir
 			}
 
@@ -280,12 +285,12 @@ func discoverWorkspaces(repoRoot string) (<-chan workspaceDiscovery, error) {
 			workspacePath := filepath.Dir(path)
 
 			// Skip if it's the parent repo itself
-			if workspacePath == repoRoot {
+			if workspacePath == manifestRoot {
 				return filepath.SkipDir
 			}
 
-			// Get relative path from parent
-			relPath, err := filepath.Rel(repoRoot, workspacePath)
+			// Get relative path from manifest root (not scan root)
+			relPath, err := filepath.Rel(manifestRoot, workspacePath)
 			if err != nil {
 				return nil
 			}
@@ -304,15 +309,52 @@ func discoverWorkspaces(repoRoot string) (<-chan workspaceDiscovery, error) {
 	return discoveries, nil
 }
 
+// getOptimalWorkerCount determines the optimal number of workers for parallel processing
+// Priority order:
+// 1. GIT_MULTIREPO_WORKERS environment variable (if valid)
+// 2. CPU cores * 2 (I/O bound operations benefit from higher concurrency)
+// Constraints: min=1, max=32 (prevent context switching overhead)
+func getOptimalWorkerCount() int {
+	// Check environment variable
+	if envWorkers := os.Getenv("GIT_MULTIREPO_WORKERS"); envWorkers != "" {
+		if workers, err := strconv.Atoi(envWorkers); err == nil && workers > 0 {
+			// Apply max constraint
+			if workers > 32 {
+				return 32
+			}
+			return workers
+		}
+		// Invalid value in env var, fall through to default
+	}
+
+	// CPU-based default: NumCPU * 2 for I/O-bound workloads
+	workers := runtime.NumCPU() * 2
+
+	// Apply constraints
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > 32 {
+		workers = 32
+	}
+
+	return workers
+}
+
 // processWorkspacesParallel processes discovered workspaces in parallel using a worker pool
 func processWorkspacesParallel(ctx context.Context, discoveries <-chan workspaceDiscovery) ([]manifest.WorkspaceEntry, error) {
+	return processWorkspacesParallelWithWorkers(ctx, discoveries, getOptimalWorkerCount())
+}
+
+// processWorkspacesParallelWithWorkers processes workspaces with configurable worker count
+func processWorkspacesParallelWithWorkers(ctx context.Context, discoveries <-chan workspaceDiscovery, numWorkers int) ([]manifest.WorkspaceEntry, error) {
 	var mu sync.Mutex
 	var workspaces []manifest.WorkspaceEntry
 
 	eg, ctx := errgroup.WithContext(ctx)
 
-	// Semaphore for worker pool (8 workers)
-	sem := make(chan struct{}, 8)
+	// Semaphore for worker pool
+	sem := make(chan struct{}, numWorkers)
 
 	for discovery := range discoveries {
 		d := discovery // Capture loop variable
@@ -380,11 +422,13 @@ func processWorkspacesParallel(ctx context.Context, discoveries <-chan workspace
 }
 
 // scanForWorkspaces recursively scans directories for git repositories using parallel processing
-func scanForWorkspaces(repoRoot string) ([]manifest.WorkspaceEntry, error) {
+// scanRoot: directory to start scanning from
+// manifestRoot: parent directory containing .git.multirepo (for calculating relative paths)
+func scanForWorkspaces(scanRoot, manifestRoot string) ([]manifest.WorkspaceEntry, error) {
 	ctx := context.Background()
 
 	// Phase 1: Discover workspaces sequentially
-	discoveries, err := discoverWorkspaces(repoRoot)
+	discoveries, err := discoverWorkspaces(scanRoot, manifestRoot)
 	if err != nil {
 		return nil, err
 	}

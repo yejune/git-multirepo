@@ -47,6 +47,7 @@ Git subtrees solve some problems but create others:
 - **Auto-sync hook**: Optionally sync after checkout
 - **Self-update**: Update the binary with `git multirepo selfupdate`
 - **Recursive sync**: Sync workspaces within workspaces
+- **Adaptive concurrency**: Automatically optimizes worker count based on CPU cores
 
 ## Installation
 
@@ -102,6 +103,32 @@ git multirepo clone -b develop https://github.com/user/repo.git
 # SSH format
 git multirepo clone git@github.com:user/repo.git
 ```
+
+## Configuration
+
+### Environment Variables
+
+**GIT_MULTIREPO_WORKERS** - Control parallel processing concurrency
+
+```bash
+# Default: CPU cores × 2 (automatically detected)
+# Maximum: 32 (prevents excessive context switching)
+# Minimum: 1
+
+# Examples:
+export GIT_MULTIREPO_WORKERS=8    # Use 8 workers
+export GIT_MULTIREPO_WORKERS=16   # Use 16 workers (high concurrency)
+export GIT_MULTIREPO_WORKERS=4    # Use 4 workers (resource-constrained)
+
+# Unset to use default (CPU × 2)
+unset GIT_MULTIREPO_WORKERS
+```
+
+**When to customize:**
+- **High-performance systems**: Increase for faster sync (e.g., 24 workers on 16-core CPU)
+- **Resource-constrained environments**: Decrease to reduce memory/CPU usage (e.g., 4 workers)
+- **Network-limited systems**: Lower value reduces concurrent network requests
+- **Default works for most cases**: CPU × 2 is optimized for I/O-bound git operations
 
 ## Commands
 
