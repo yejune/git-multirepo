@@ -82,6 +82,51 @@ func validateMultirepoIntegrity(ctx *common.WorkspaceContext) []IntegrityIssue {
 	mismatches := findRemoteURLMismatches(ctx)
 	issues = append(issues, mismatches...)
 
+	// 5. Check for local path repos (WARNING)
+	localPathRepos := findLocalPathRepos(ctx)
+	issues = append(issues, localPathRepos...)
+
+	// 6. Check for package manager dependencies registered as workspaces (WARNING)
+	pkgManagerDeps := findPackageManagerDependencies(ctx)
+	issues = append(issues, pkgManagerDeps...)
+
+	return issues
+}
+
+// findLocalPathRepos checks for workspaces with local filesystem paths as repo URLs
+func findLocalPathRepos(ctx *common.WorkspaceContext) []IntegrityIssue {
+	var issues []IntegrityIssue
+
+	for _, ws := range ctx.Manifest.Workspaces {
+		if strings.HasPrefix(ws.Repo, "/") {
+			issues = append(issues, IntegrityIssue{
+				Level:   "warning",
+				Message: "Local path repo URL detected",
+				Path:    ws.Path,
+				Fix:     fmt.Sprintf("Repo URL is '%s' - this won't work on other machines.\n    Update .git.multirepos with a valid remote URL or remove with:\n    git multirepo remove %s", ws.Repo, ws.Path),
+			})
+		}
+	}
+
+	return issues
+}
+
+// findPackageManagerDependencies checks for package manager dependencies registered as workspaces
+func findPackageManagerDependencies(ctx *common.WorkspaceContext) []IntegrityIssue {
+	var issues []IntegrityIssue
+
+	for _, ws := range ctx.Manifest.Workspaces {
+		absPath := filepath.Join(ctx.RepoRoot, ws.Path)
+		if shouldExcludeWorkspace(absPath, ws.Path, ctx.RepoRoot) {
+			issues = append(issues, IntegrityIssue{
+				Level:   "warning",
+				Message: "Package manager dependency registered as workspace",
+				Path:    ws.Path,
+				Fix:     fmt.Sprintf("This appears to be a package manager dependency (e.g., Swift PM, npm).\n    Remove with: git multirepo remove %s", ws.Path),
+			})
+		}
+	}
+
 	return issues
 }
 
@@ -150,6 +195,11 @@ func findUnregisteredWorkspaces(ctx *common.WorkspaceContext) []string {
 
 			// Skip if it's the root itself
 			if relPath == "." {
+				return filepath.SkipDir
+			}
+
+			// Skip package manager dependencies (they shouldn't be registered anyway)
+			if shouldExcludeWorkspace(wsPath, relPath, ctx.RepoRoot) {
 				return filepath.SkipDir
 			}
 
@@ -276,6 +326,20 @@ func runStatus(cmd *cobra.Command, args []string) error {
 						} else if strings.HasPrefix(line, "Actual:") {
 							printGray(i18n.T("remote_url_actual") + "\n", strings.TrimPrefix(line, "Actual: "))
 						}
+					}
+					fmt.Println()
+				} else if strings.Contains(issue.Message, "Local path repo") {
+					printYellow("⚠ %s: %s\n", issue.Path, issue.Message)
+					lines := strings.Split(issue.Fix, "\n")
+					for _, line := range lines {
+						printGray("    %s\n", line)
+					}
+					fmt.Println()
+				} else if strings.Contains(issue.Message, "Package manager dependency") {
+					printYellow("⚠ %s: %s\n", issue.Path, issue.Message)
+					lines := strings.Split(issue.Fix, "\n")
+					for _, line := range lines {
+						printGray("    %s\n", line)
 					}
 					fmt.Println()
 				}

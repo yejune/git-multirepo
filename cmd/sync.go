@@ -28,11 +28,197 @@ var (
 	syncVerbose bool
 
 	// Color formatters for sync output
-	colorCyan  = color.New(color.FgCyan, color.Bold)
-	colorBlue  = color.New(color.FgBlue)
-	colorGreen = color.New(color.FgGreen)
-	colorFaint = color.New(color.Faint)
+	colorCyan   = color.New(color.FgCyan, color.Bold)
+	colorBlue   = color.New(color.FgBlue)
+	colorGreen  = color.New(color.FgGreen)
+	colorFaint  = color.New(color.Faint)
+	colorYellow = color.New(color.FgYellow)
 )
+
+// Package manager exclusion patterns (directory path combinations)
+// These are specific enough to avoid false positives
+var excludePathPatterns = []string{
+	".build/checkouts/",         // Swift Package Manager
+	"SourcePackages/checkouts/", // Xcode SPM
+	"Carthage/Checkouts/",       // Carthage
+}
+
+// markerRule defines a marker file and its associated exclude directory
+type markerRule struct {
+	markerFile string
+	excludeDir string
+}
+
+// Marker file based exclusion rules
+var markerRules = []markerRule{
+	{"package.json", "node_modules"},
+	{"composer.json", "vendor"},
+	{"Gemfile", "vendor/bundle"},
+}
+
+// matchesExcludePattern checks if the path contains any of the exclude patterns
+func matchesExcludePattern(relPath string) bool {
+	for _, pattern := range excludePathPatterns {
+		if strings.Contains(relPath, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// isExcludedByMarker checks if the path is inside a package manager's dependency directory
+// by looking for marker files in parent directories
+func isExcludedByMarker(absPath, manifestRoot string) bool {
+	relPath, err := filepath.Rel(manifestRoot, absPath)
+	if err != nil {
+		return false
+	}
+
+	for _, rule := range markerRules {
+		// Check if relPath contains or starts with excludeDir
+		excludeDirWithSlash := rule.excludeDir + "/"
+		if !strings.Contains(relPath, excludeDirWithSlash) && !strings.HasPrefix(relPath, rule.excludeDir) {
+			continue
+		}
+
+		// Find the position of excludeDir in the path
+		idx := strings.Index(relPath, rule.excludeDir)
+		if idx < 0 {
+			continue
+		}
+
+		// Determine the parent directory where marker file should be
+		var parentPath string
+		if idx > 0 {
+			// excludeDir is nested: e.g., "subdir/node_modules/pkg"
+			parentPath = filepath.Join(manifestRoot, relPath[:idx-1])
+		} else {
+			// excludeDir is at root: e.g., "node_modules/pkg"
+			parentPath = manifestRoot
+		}
+
+		// Check if marker file exists in the parent directory
+		markerPath := filepath.Join(parentPath, rule.markerFile)
+		if _, err := os.Stat(markerPath); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// shouldExcludeWorkspace determines if a workspace should be excluded from registration
+func shouldExcludeWorkspace(absPath, relPath, manifestRoot string) bool {
+	// Strategy 1: Directory pattern combinations (e.g., .build/checkouts/)
+	if matchesExcludePattern(relPath) {
+		return true
+	}
+	// Strategy 2: Marker file based exclusion (e.g., package.json -> node_modules)
+	if isExcludedByMarker(absPath, manifestRoot) {
+		return true
+	}
+	return false
+}
+
+// cleanupInvalidWorkspaces removes package manager dependencies from the manifest
+// Returns the number of workspaces removed
+func cleanupInvalidWorkspaces(ctx *common.WorkspaceContext) int {
+	var validWorkspaces []manifest.WorkspaceEntry
+	removedCount := 0
+
+	for _, ws := range ctx.Manifest.Workspaces {
+		absPath := filepath.Join(ctx.RepoRoot, ws.Path)
+
+		// Check if this workspace should be excluded
+		if shouldExcludeWorkspace(absPath, ws.Path, ctx.RepoRoot) {
+			colorYellow.Fprintf(os.Stdout, "→ Removing package manager dependency: %s\n", ws.Path)
+			removedCount++
+			continue
+		}
+
+		validWorkspaces = append(validWorkspaces, ws)
+	}
+
+	if removedCount > 0 {
+		ctx.Manifest.Workspaces = validWorkspaces
+		printGreen("✓ Cleaned up %d invalid workspace(s) from manifest\n\n", removedCount)
+	}
+
+	return removedCount
+}
+
+// addUnregisteredWorkspaces finds and adds unregistered workspaces to the manifest
+// Returns the number of workspaces added
+func addUnregisteredWorkspaces(ctx *common.WorkspaceContext) int {
+	// Build a map of registered workspace paths
+	registered := make(map[string]bool)
+	for _, ws := range ctx.Manifest.Workspaces {
+		registered[ws.Path] = true
+	}
+
+	addedCount := 0
+
+	// Walk the repository to find .git directories
+	filepath.Walk(ctx.RepoRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+
+		// Skip the root .git
+		if path == filepath.Join(ctx.RepoRoot, ".git") {
+			return filepath.SkipDir
+		}
+
+		// Found a .git directory
+		if info.IsDir() && info.Name() == ".git" {
+			wsPath := filepath.Dir(path)
+			relPath, err := filepath.Rel(ctx.RepoRoot, wsPath)
+			if err != nil {
+				return nil
+			}
+
+			// Skip root
+			if relPath == "." {
+				return filepath.SkipDir
+			}
+
+			// Skip if already registered
+			if registered[relPath] {
+				return filepath.SkipDir
+			}
+
+			// Skip package manager dependencies
+			if shouldExcludeWorkspace(wsPath, relPath, ctx.RepoRoot) {
+				return filepath.SkipDir
+			}
+
+			// Get remote URL
+			repo, _ := git.GetRemoteURL(wsPath)
+			if repo != "" && strings.HasPrefix(repo, "/") {
+				colorYellow.Fprintf(os.Stdout, "→ Adding workspace: %s (local path repo)\n", relPath)
+			} else if repo == "" {
+				colorYellow.Fprintf(os.Stdout, "→ Adding workspace: %s (no remote)\n", relPath)
+			} else {
+				printGreen("→ Adding workspace: %s\n", relPath)
+			}
+
+			ctx.Manifest.Workspaces = append(ctx.Manifest.Workspaces, manifest.WorkspaceEntry{
+				Path: relPath,
+				Repo: repo,
+			})
+			addedCount++
+
+			return filepath.SkipDir
+		}
+
+		return nil
+	})
+
+	if addedCount > 0 {
+		printGreen("✓ Added %d unregistered workspace(s) to manifest\n\n", addedCount)
+	}
+
+	return addedCount
+}
 
 // Color print functions that explicitly use os.Stdout for testability
 func printCyan(format string, a ...interface{}) {
@@ -91,7 +277,27 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 2. If no workspaces in manifest, scan for existing sub repos
+	// 2. Clean up invalid workspaces from existing manifest
+	if len(ctx.Manifest.Workspaces) > 0 {
+		cleaned := cleanupInvalidWorkspaces(ctx)
+		if cleaned > 0 {
+			if err := ctx.SaveManifest(); err != nil {
+				return fmt.Errorf("failed to save manifest after cleanup: %w", err)
+			}
+		}
+	}
+
+	// 2.5. Find and add unregistered workspaces
+	if len(ctx.Manifest.Workspaces) > 0 {
+		added := addUnregisteredWorkspaces(ctx)
+		if added > 0 {
+			if err := ctx.SaveManifest(); err != nil {
+				return fmt.Errorf("failed to save manifest after adding workspaces: %w", err)
+			}
+		}
+	}
+
+	// 3. If no workspaces in manifest, scan for existing sub repos
 	// Use ScanRootDir instead of RepoRoot to support workspace subdirectory sync
 	if len(ctx.Manifest.Workspaces) == 0 {
 		fmt.Println(i18n.T("no_gitsubs_found"))
@@ -337,6 +543,11 @@ func discoverWorkspaces(scanRoot, manifestRoot string) (<-chan workspaceDiscover
 				return nil
 			}
 
+			// Check if this workspace should be excluded (package manager dependencies)
+			if shouldExcludeWorkspace(workspacePath, relPath, manifestRoot) {
+				return filepath.SkipDir // Skip this and all subdirectories
+			}
+
 			// Send discovery to channel
 			discoveries <- workspaceDiscovery{
 				path:    workspacePath,
@@ -415,6 +626,9 @@ func processWorkspacesParallelWithWorkers(ctx context.Context, discoveries <-cha
 				// Warning only - continue processing workspace with empty remote
 				fmt.Printf("⚠ %s\n", i18n.T("warn_no_remote", d.relPath))
 				repo = "" // Empty remote is valid for local-only repos
+			} else if strings.HasPrefix(repo, "/") {
+				// Warn about local path repos - they won't work on other machines
+				colorYellow.Fprintf(os.Stdout, "  ⚠ %s: local path repo - won't sync on other machines\n", d.relPath)
 			}
 
 			// Detect modified files for auto-keep
