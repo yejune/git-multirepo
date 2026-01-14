@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -15,6 +17,7 @@ import (
 	"github.com/yejune/git-multirepo/internal/i18n"
 	"github.com/yejune/git-multirepo/internal/manifest"
 	"github.com/yejune/git-multirepo/internal/patch"
+	"golang.org/x/sync/errgroup"
 )
 
 var syncCmd = &cobra.Command{
@@ -75,7 +78,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("failed to save manifest: %w", err)
 			}
 
-			fmt.Printf(i18n.T("created_gitsubs", len(discovered)))
+			fmt.Print(i18n.T("created_gitsubs", len(discovered)))
 			for _, ws := range discovered {
 				fmt.Printf("  - %s (%s)\n", ws.Path, ws.Repo)
 			}
@@ -244,85 +247,155 @@ func hasGitignoreEntry(repoRoot, path string) bool {
 	return false
 }
 
-// scanForWorkspaces recursively scans directories for git repositories
-func scanForWorkspaces(repoRoot string) ([]manifest.WorkspaceEntry, error) {
+// workspaceDiscovery represents a discovered workspace location
+type workspaceDiscovery struct {
+	path    string
+	relPath string
+}
+
+// discoverWorkspaces sequentially scans for .git directories and sends them to a channel
+func discoverWorkspaces(repoRoot string) (<-chan workspaceDiscovery, error) {
+	discoveries := make(chan workspaceDiscovery, 100)
+
+	go func() {
+		defer close(discoveries)
+
+		// Walk the directory tree
+		filepath.Walk(repoRoot, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil // Skip errors
+			}
+
+			// Skip parent's .git directory
+			if path == filepath.Join(repoRoot, ".git") {
+				return filepath.SkipDir
+			}
+
+			// Check if this is a .git directory
+			if !info.IsDir() || info.Name() != ".git" {
+				return nil
+			}
+
+			// Get the repository path (parent of .git)
+			workspacePath := filepath.Dir(path)
+
+			// Skip if it's the parent repo itself
+			if workspacePath == repoRoot {
+				return filepath.SkipDir
+			}
+
+			// Get relative path from parent
+			relPath, err := filepath.Rel(repoRoot, workspacePath)
+			if err != nil {
+				return nil
+			}
+
+			// Send discovery to channel
+			discoveries <- workspaceDiscovery{
+				path:    workspacePath,
+				relPath: relPath,
+			}
+
+			// Skip descending into this workspace's subdirectories
+			return filepath.SkipDir
+		})
+	}()
+
+	return discoveries, nil
+}
+
+// processWorkspacesParallel processes discovered workspaces in parallel using a worker pool
+func processWorkspacesParallel(ctx context.Context, discoveries <-chan workspaceDiscovery) ([]manifest.WorkspaceEntry, error) {
+	var mu sync.Mutex
 	var workspaces []manifest.WorkspaceEntry
 
-	// Walk the directory tree
-	err := filepath.Walk(repoRoot, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil // Skip errors
-		}
+	eg, ctx := errgroup.WithContext(ctx)
 
-		// Skip parent's .git directory
-		if path == filepath.Join(repoRoot, ".git") {
-			return filepath.SkipDir
-		}
+	// Semaphore for worker pool (8 workers)
+	sem := make(chan struct{}, 8)
 
-		// Check if this is a .git directory
-		if !info.IsDir() || info.Name() != ".git" {
-			return nil
-		}
+	for discovery := range discoveries {
+		d := discovery // Capture loop variable
+		eg.Go(func() error {
+			// Acquire worker
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+			defer func() { <-sem }() // Release worker
 
-		// Get the repository path (parent of .git)
-		workspacePath := filepath.Dir(path)
+			// Extract git info
+			repo, err := git.GetRemoteURL(d.path)
+			if err != nil {
+				// Warning only - continue processing workspace with empty remote
+				fmt.Printf("⚠ %s\n", i18n.T("warn_no_remote", d.relPath))
+				repo = "" // Empty remote is valid for local-only repos
+			}
 
-		// Skip if it's the parent repo itself
-		if workspacePath == repoRoot {
-			return filepath.SkipDir
-		}
-
-		// Get relative path from parent
-		relPath, err := filepath.Rel(repoRoot, workspacePath)
-		if err != nil {
-			return nil
-		}
-
-		// Extract git info
-		repo, err := git.GetRemoteURL(workspacePath)
-		if err != nil {
-			fmt.Println(i18n.T("failed_get_remote", relPath, err))
-			return filepath.SkipDir
-		}
-
-		// Detect modified files for auto-keep
-		var keepFiles []string
-		// Get skip-worktree files (these are the keep files)
-		skipFiles, err := git.ListSkipWorktree(workspacePath)
-		if err == nil && len(skipFiles) > 0 {
-			keepFiles = skipFiles
-		} else {
-			// Fallback: detect modified files for first-time setup (no keep files yet, so no transaction needed)
-			// Transaction is safe even with empty keepFiles (it will just execute workFunc directly)
-			var modifiedFiles []string
-			git.WithSkipWorktreeTransaction(workspacePath, []string{}, func() error {
-				var err error
-				modifiedFiles, err = git.GetModifiedFiles(workspacePath)
-				return err
-			})
-			if len(modifiedFiles) > 0 {
-				// Clean up file list
-				for _, file := range modifiedFiles {
-					if strings.TrimSpace(file) != "" {
-						keepFiles = append(keepFiles, file)
+			// Detect modified files for auto-keep
+			var keepFiles []string
+			// Get skip-worktree files (these are the keep files)
+			skipFiles, err := git.ListSkipWorktree(d.path)
+			if err == nil && len(skipFiles) > 0 {
+				keepFiles = skipFiles
+			} else {
+				// Fallback: detect modified files for first-time setup
+				var modifiedFiles []string
+				git.WithSkipWorktreeTransaction(d.path, []string{}, func() error {
+					var err error
+					modifiedFiles, err = git.GetModifiedFiles(d.path)
+					return err
+				})
+				if len(modifiedFiles) > 0 {
+					// Clean up file list
+					for _, file := range modifiedFiles {
+						if strings.TrimSpace(file) != "" {
+							keepFiles = append(keepFiles, file)
+						}
 					}
 				}
 			}
-		}
 
-		fmt.Printf("  %s\n", i18n.T("found_sub", relPath))
+			fmt.Printf("  %s\n", i18n.T("found_sub", d.relPath))
 
-		workspaces = append(workspaces, manifest.WorkspaceEntry{
-			Path: relPath,
-			Repo: repo,
-			Keep: keepFiles,
+			// Thread-safe append
+			mu.Lock()
+			workspaces = append(workspaces, manifest.WorkspaceEntry{
+				Path: d.relPath,
+				Repo: repo,
+				Keep: keepFiles,
+			})
+			mu.Unlock()
+
+			return nil
 		})
+	}
 
-		// Skip descending into this workspace's subdirectories
-		return filepath.SkipDir
-	})
+	if err := eg.Wait(); err != nil {
+		return nil, err
+	}
 
-	return workspaces, err
+	return workspaces, nil
+}
+
+// scanForWorkspaces recursively scans directories for git repositories using parallel processing
+func scanForWorkspaces(repoRoot string) ([]manifest.WorkspaceEntry, error) {
+	ctx := context.Background()
+
+	// Phase 1: Discover workspaces sequentially
+	discoveries, err := discoverWorkspaces(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	// Phase 2: Process workspaces in parallel
+	workspaces, err := processWorkspacesParallel(ctx, discoveries)
+	if err != nil {
+		return nil, err
+	}
+
+	return workspaces, nil
 }
 
 // processKeepFiles handles backup, patch creation, and skip-worktree for keep files

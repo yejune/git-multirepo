@@ -51,7 +51,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 	// Filter workspaces if path argument provided
 	workspacesToProcess, err := ctx.FilterWorkspaces(args)
 	if err != nil {
-		return fmt.Errorf(i18n.T("sub_not_found", args[0]))
+		return fmt.Errorf("%s", i18n.T("sub_not_found", args[0]))
 	}
 
 	for _, workspace := range workspacesToProcess {
