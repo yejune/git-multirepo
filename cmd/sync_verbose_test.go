@@ -3,8 +3,6 @@ package cmd
 import (
 	"bytes"
 	"fmt"
-	"io"
-	"os"
 	"strings"
 	"testing"
 )
@@ -79,18 +77,11 @@ func TestPrintKeepFileList(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Capture stdout
-			old := os.Stdout
-			r, w, _ := os.Pipe()
-			os.Stdout = w
-
-			printKeepFileList(tt.files)
-
-			w.Close()
-			os.Stdout = old
-
+			// Use bytes.Buffer to capture output
 			var buf bytes.Buffer
-			io.Copy(&buf, r)
+
+			printKeepFileList(&buf, tt.files)
+
 			output := buf.String()
 
 			// Count lines (excluding trailing newline)
@@ -159,18 +150,11 @@ func TestPrintKeepFileList(t *testing.T) {
 func TestPrintKeepFileListFormatting(t *testing.T) {
 	files := []string{".env.local", "config/local.json"}
 
-	// Capture stdout
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	printKeepFileList(files)
-
-	w.Close()
-	os.Stdout = old
-
+	// Use bytes.Buffer to capture output
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+
+	printKeepFileList(&buf, files)
+
 	output := buf.String()
 
 	// Verify exact formatting

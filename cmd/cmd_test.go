@@ -8,9 +8,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fatih/color"
 	"github.com/yejune/git-multirepo/internal/hooks"
 	"github.com/yejune/git-multirepo/internal/manifest"
 )
+
+func init() {
+	// Disable color output in tests for consistent string matching
+	color.NoColor = true
+}
 
 // setupTestEnv creates a test environment with a git repository
 func setupTestEnv(t *testing.T) (string, func()) {

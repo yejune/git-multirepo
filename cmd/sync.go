@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/yejune/git-multirepo/internal/backup"
 	"github.com/yejune/git-multirepo/internal/common"
@@ -24,7 +26,30 @@ import (
 
 var (
 	syncVerbose bool
+
+	// Color formatters for sync output
+	colorCyan  = color.New(color.FgCyan, color.Bold)
+	colorBlue  = color.New(color.FgBlue)
+	colorGreen = color.New(color.FgGreen)
+	colorFaint = color.New(color.Faint)
 )
+
+// Color print functions that explicitly use os.Stdout for testability
+func printCyan(format string, a ...interface{}) {
+	colorCyan.Fprintf(os.Stdout, format, a...)
+}
+
+func printBlue(format string, a ...interface{}) {
+	colorBlue.Fprintf(os.Stdout, format, a...)
+}
+
+func printGreen(format string, a ...interface{}) {
+	colorGreen.Fprintf(os.Stdout, format, a...)
+}
+
+func printFaint(format string, a ...interface{}) {
+	colorFaint.Fprintf(os.Stdout, format, a...)
+}
 
 var syncCmd = &cobra.Command{
 	Use:   "sync",
@@ -113,9 +138,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 	issues := 0
 	motherKeepFiles := ctx.Manifest.Keep
 	if len(motherKeepFiles) > 0 {
-		fmt.Printf("\n%s\n", i18n.T("processing_mother_keep"))
+		fmt.Println()
+		printCyan("Mother Repository\n")
+		printBlue("  → Processing keep files (%d files)\n", len(motherKeepFiles))
 		if syncVerbose {
-			printKeepFileList(motherKeepFiles)
+			printKeepFileList(os.Stdout, motherKeepFiles)
 		}
 		processKeepFiles(ctx.RepoRoot, ctx.RepoRoot, motherKeepFiles, &issues)
 	}
@@ -130,7 +157,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	for _, ws := range ctx.Manifest.Workspaces {
 		fullPath := filepath.Join(ctx.RepoRoot, ws.Path)
-		fmt.Printf("\n  %s\n", ws.Path)
+		fmt.Println()
+		printCyan("  %s\n", ws.Path)
 
 		// Check if workspace exists
 		if !git.IsRepo(fullPath) {
@@ -196,13 +224,13 @@ func runSync(cmd *cobra.Command, args []string) error {
 		// Process keep files for this workspace
 		keepFiles := ws.Keep
 		if len(keepFiles) > 0 {
-			fmt.Printf("    %s\n", i18n.T("processing_keep_files", len(keepFiles)))
+			printBlue("    → Processing keep files (%d files)\n", len(keepFiles))
 			if syncVerbose {
-				printKeepFileList(keepFiles)
+				printKeepFileList(os.Stdout, keepFiles)
 			}
 			processKeepFiles(ctx.RepoRoot, fullPath, keepFiles, &issues)
 		} else {
-			fmt.Printf("%s\n", i18n.T("no_keep_files_clean"))
+			printGreen("    ✓ No keep files - clean workspace\n")
 		}
 
 		// Install/update post-commit hook in workspace
@@ -588,21 +616,23 @@ func processKeepFiles(repoRoot, workspacePath string, keepFiles []string, issues
 
 	// Summary message
 	if len(modifiedFiles) > 0 {
-		fmt.Printf("        ✓ Processed %d modified files (%d with skip-worktree)\n", len(modifiedFiles), len(keepFiles))
+		printGreen("        ✓ Processed %d modified files (%d with skip-worktree)\n", len(modifiedFiles), len(keepFiles))
 	}
 }
 
 // printKeepFileList prints keep file list with indentation
 // In verbose mode, shows all files without limit
-func printKeepFileList(keepFiles []string) {
+func printKeepFileList(w io.Writer, keepFiles []string) {
 	const indent = "      "
 
 	if len(keepFiles) == 0 {
 		return
 	}
 
+	faint := color.New(color.Faint)
+
 	// In verbose mode, display all files
 	for _, file := range keepFiles {
-		fmt.Printf("%s• %s\n", indent, file)
+		faint.Fprintf(w, "%s• %s\n", indent, file)
 	}
 }
