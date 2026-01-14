@@ -33,6 +33,178 @@ func init() {
 	rootCmd.AddCommand(statusCmd)
 }
 
+// IntegrityIssue represents an integrity validation issue
+type IntegrityIssue struct {
+	Level   string // "critical", "warning", "info"
+	Message string
+	Path    string
+	Fix     string
+}
+
+// validateMultirepoIntegrity performs comprehensive integrity checks
+func validateMultirepoIntegrity(ctx *common.WorkspaceContext) []IntegrityIssue {
+	var issues []IntegrityIssue
+
+	// 1. Check for nested manifests (CRITICAL)
+	nestedManifests := findNestedManifests(ctx)
+	for _, path := range nestedManifests {
+		issues = append(issues, IntegrityIssue{
+			Level:   "critical",
+			Message: i18n.T("nested_manifest_critical"),
+			Path:    path,
+			Fix:     fmt.Sprintf("rm %s", filepath.Join(path, ".git.multirepos")),
+		})
+	}
+
+	// 2. Check for parent manifest (WARNING)
+	parentPath := findParentManifest(ctx)
+	if parentPath != "" {
+		issues = append(issues, IntegrityIssue{
+			Level:   "warning",
+			Message: i18n.T("parent_manifest_warning"),
+			Path:    parentPath,
+			Fix:     "",
+		})
+	}
+
+	// 3. Check for unregistered workspaces (WARNING)
+	unregistered := findUnregisteredWorkspaces(ctx)
+	if len(unregistered) > 0 {
+		issues = append(issues, IntegrityIssue{
+			Level:   "warning",
+			Message: fmt.Sprintf(i18n.T("unregistered_workspace_warning"), len(unregistered)),
+			Path:    strings.Join(unregistered, "\n"),
+			Fix:     "git multirepo sync",
+		})
+	}
+
+	// 4. Check for remote URL mismatches (WARNING)
+	mismatches := findRemoteURLMismatches(ctx)
+	issues = append(issues, mismatches...)
+
+	return issues
+}
+
+// findNestedManifests searches for .git.multirepos files within workspace directories
+func findNestedManifests(ctx *common.WorkspaceContext) []string {
+	var nested []string
+
+	for _, ws := range ctx.Manifest.Workspaces {
+		wsPath := filepath.Join(ctx.RepoRoot, ws.Path)
+		manifestPath := filepath.Join(wsPath, ".git.multirepos")
+
+		if _, err := os.Stat(manifestPath); err == nil {
+			nested = append(nested, ws.Path)
+		}
+	}
+
+	return nested
+}
+
+// findParentManifest checks if there's a parent .git.multirepos above the current repo root
+func findParentManifest(ctx *common.WorkspaceContext) string {
+	parent := filepath.Dir(ctx.RepoRoot)
+
+	// Don't search beyond filesystem root
+	if parent == ctx.RepoRoot || parent == "/" {
+		return ""
+	}
+
+	manifestPath := filepath.Join(parent, ".git.multirepos")
+	if _, err := os.Stat(manifestPath); err == nil {
+		return parent
+	}
+
+	return ""
+}
+
+// findUnregisteredWorkspaces looks for .git directories not in the manifest
+func findUnregisteredWorkspaces(ctx *common.WorkspaceContext) []string {
+	var unregistered []string
+
+	// Build a map of registered workspace paths for quick lookup
+	registered := make(map[string]bool)
+	for _, ws := range ctx.Manifest.Workspaces {
+		registered[ws.Path] = true
+	}
+
+	// Walk the repository to find .git directories
+	err := filepath.Walk(ctx.RepoRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Continue on errors
+		}
+
+		// Skip the root .git
+		if path == filepath.Join(ctx.RepoRoot, ".git") {
+			return filepath.SkipDir
+		}
+
+		// Found a .git directory
+		if info.IsDir() && info.Name() == ".git" {
+			// Get relative path from repo root
+			wsPath := filepath.Dir(path)
+			relPath, err := filepath.Rel(ctx.RepoRoot, wsPath)
+			if err != nil {
+				return nil
+			}
+
+			// Skip if it's the root itself
+			if relPath == "." {
+				return filepath.SkipDir
+			}
+
+			// Check if it's registered
+			if !registered[relPath] {
+				unregistered = append(unregistered, relPath)
+			}
+
+			// Don't descend into the workspace
+			return filepath.SkipDir
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		// Silently continue if walk fails
+		return unregistered
+	}
+
+	return unregistered
+}
+
+// findRemoteURLMismatches checks if workspace remote URLs match manifest
+func findRemoteURLMismatches(ctx *common.WorkspaceContext) []IntegrityIssue {
+	var issues []IntegrityIssue
+
+	for _, ws := range ctx.Manifest.Workspaces {
+		wsPath := filepath.Join(ctx.RepoRoot, ws.Path)
+
+		// Skip if not cloned
+		if !git.IsRepo(wsPath) {
+			continue
+		}
+
+		// Get actual remote URL
+		actualURL, err := git.GetRemoteURL(wsPath)
+		if err != nil {
+			continue // Skip if no remote configured
+		}
+
+		// Compare with manifest
+		if actualURL != ws.Repo {
+			issues = append(issues, IntegrityIssue{
+				Level:   "warning",
+				Message: i18n.T("remote_url_mismatch"),
+				Path:    ws.Path,
+				Fix:     fmt.Sprintf("Expected: %s\nActual: %s", ws.Repo, actualURL),
+			})
+		}
+	}
+
+	return issues
+}
+
 func runStatus(cmd *cobra.Command, args []string) error {
 	// Define color printers
 	// Use Fprintf to always print to the correct stdout
@@ -49,6 +221,69 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
+	// Section 0: Multirepo Integrity Check
+	printGray("%s\n", strings.Repeat("━", 80))
+	printBlue("%s\n", i18n.T("integrity_check"))
+	printGray("%s\n\n", strings.Repeat("━", 80))
+
+	issues := validateMultirepoIntegrity(ctx)
+
+	if len(issues) == 0 {
+		// All clean
+		printGreen("%s\n", i18n.T("no_nested_manifests"))
+		printGreen("%s\n", i18n.T("no_parent_manifest"))
+		printGreen("%s\n", i18n.T("all_workspaces_registered"))
+	} else {
+		// Display issues grouped by level
+		for _, issue := range issues {
+			switch issue.Level {
+			case "critical":
+				printRed("%s\n", issue.Message)
+				if issue.Path != "" {
+					printRed(i18n.T("nested_manifest_path") + "\n", issue.Path)
+				}
+				fmt.Println()
+				printGray("%s\n", i18n.T("nested_manifest_explanation"))
+				printGray("%s\n", i18n.T("nested_manifest_fix"))
+				printGray(i18n.T("nested_manifest_cmd") + "\n", issue.Fix)
+				fmt.Println()
+
+			case "warning":
+				if strings.Contains(issue.Message, "Parent manifest") || strings.Contains(issue.Message, "부모 manifest") {
+					printYellow("%s\n", issue.Message)
+					printYellow(i18n.T("parent_manifest_path") + "\n", issue.Path)
+					printGray("%s\n", i18n.T("parent_manifest_explanation"))
+					fmt.Println()
+				} else if strings.Contains(issue.Message, "unregistered") || strings.Contains(issue.Message, "미등록") {
+					printYellow("%s\n", issue.Message)
+					for _, wsPath := range strings.Split(issue.Path, "\n") {
+						if wsPath != "" {
+							printGray(i18n.T("unregistered_workspace_item") + "\n", wsPath)
+						}
+					}
+					fmt.Println()
+					printGray("%s\n", i18n.T("unregistered_workspace_fix"))
+					printGray("    %s\n", issue.Fix)
+					fmt.Println()
+				} else if strings.Contains(issue.Message, "Remote URL") || strings.Contains(issue.Message, "Remote URL") {
+					printYellow("%s\n", issue.Message)
+					printGray(i18n.T("remote_url_workspace") + "\n", issue.Path)
+					lines := strings.Split(issue.Fix, "\n")
+					for _, line := range lines {
+						if strings.HasPrefix(line, "Expected:") {
+							printGray(i18n.T("remote_url_expected") + "\n", strings.TrimPrefix(line, "Expected: "))
+						} else if strings.HasPrefix(line, "Actual:") {
+							printGray(i18n.T("remote_url_actual") + "\n", strings.TrimPrefix(line, "Actual: "))
+						}
+					}
+					fmt.Println()
+				}
+			}
+		}
+	}
+
+	printGray("%s\n\n", strings.Repeat("━", 80))
 
 	if len(ctx.Manifest.Workspaces) == 0 {
 		fmt.Println(i18n.T("no_subs_registered"))
