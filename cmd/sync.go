@@ -22,6 +22,10 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+var (
+	syncVerbose bool
+)
+
 var syncCmd = &cobra.Command{
 	Use:   "sync",
 	Short: "Clone missing workspaces and apply configurations",
@@ -33,11 +37,13 @@ var syncCmd = &cobra.Command{
   - Verify .gitignore entries for workspaces
 
 Examples:
-  git multirepo sync`,
+  git multirepo sync
+  git multirepo sync --verbose`,
 	RunE: runSync,
 }
 
 func init() {
+	syncCmd.Flags().BoolVarP(&syncVerbose, "verbose", "v", false, "Show detailed keep file list")
 	rootCmd.AddCommand(syncCmd)
 }
 
@@ -108,6 +114,9 @@ func runSync(cmd *cobra.Command, args []string) error {
 	motherKeepFiles := ctx.Manifest.Keep
 	if len(motherKeepFiles) > 0 {
 		fmt.Printf("\n%s\n", i18n.T("processing_mother_keep"))
+		if syncVerbose {
+			printKeepFileList(motherKeepFiles)
+		}
 		processKeepFiles(ctx.RepoRoot, ctx.RepoRoot, motherKeepFiles, &issues)
 	}
 
@@ -188,7 +197,12 @@ func runSync(cmd *cobra.Command, args []string) error {
 		keepFiles := ws.Keep
 		if len(keepFiles) > 0 {
 			fmt.Printf("    %s\n", i18n.T("processing_keep_files", len(keepFiles)))
+			if syncVerbose {
+				printKeepFileList(keepFiles)
+			}
 			processKeepFiles(ctx.RepoRoot, fullPath, keepFiles, &issues)
+		} else {
+			fmt.Printf("%s\n", i18n.T("no_keep_files_clean"))
 		}
 
 		// Install/update post-commit hook in workspace
@@ -575,5 +589,32 @@ func processKeepFiles(repoRoot, workspacePath string, keepFiles []string, issues
 	// Summary message
 	if len(modifiedFiles) > 0 {
 		fmt.Printf("        ✓ Processed %d modified files (%d with skip-worktree)\n", len(modifiedFiles), len(keepFiles))
+	}
+}
+
+// printKeepFileList prints keep file list with indentation
+// Shows first 10 files and "... (N more files)" if more than 10
+func printKeepFileList(keepFiles []string) {
+	const maxDisplay = 10
+	const indent = "      "
+
+	if len(keepFiles) == 0 {
+		return
+	}
+
+	// Display up to maxDisplay files
+	displayCount := len(keepFiles)
+	if displayCount > maxDisplay {
+		displayCount = maxDisplay
+	}
+
+	for i := 0; i < displayCount; i++ {
+		fmt.Printf("%s• %s\n", indent, keepFiles[i])
+	}
+
+	// Show remaining count
+	if len(keepFiles) > maxDisplay {
+		remaining := len(keepFiles) - maxDisplay
+		fmt.Printf("%s... (%d more files)\n", indent, remaining)
 	}
 }
