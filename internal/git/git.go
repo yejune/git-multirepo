@@ -2,11 +2,13 @@
 package git
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Clone clones a repository to the specified path
@@ -499,11 +501,25 @@ func GetStagedFiles(path string) ([]string, error) {
 	return files, nil
 }
 
-// Fetch fetches from remote
+// FetchTimeout is the timeout for fetch operations
+const FetchTimeout = 10 * time.Second
+
+// ErrFetchTimeout indicates fetch operation timed out
+var ErrFetchTimeout = fmt.Errorf("fetch timed out after %v", FetchTimeout)
+
+// Fetch fetches from remote with timeout
 func Fetch(path string) error {
-	cmd := exec.Command("git", "-C", path, "fetch", "origin")
+	ctx, cancel := context.WithTimeout(context.Background(), FetchTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "git", "-C", path, "fetch", "origin")
 	cmd.Stderr = nil // Suppress stderr
-	return cmd.Run()
+	err := cmd.Run()
+
+	if ctx.Err() == context.DeadlineExceeded {
+		return ErrFetchTimeout
+	}
+	return err
 }
 
 // GetBehindCount returns number of commits behind remote

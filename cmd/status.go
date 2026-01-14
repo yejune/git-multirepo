@@ -13,6 +13,10 @@ import (
 	"github.com/yejune/git-multirepo/internal/i18n"
 )
 
+var (
+	statusFetch bool
+)
+
 var statusCmd = &cobra.Command{
 	Use:   "status [path]",
 	Short: "Show detailed status of repositories",
@@ -20,16 +24,18 @@ var statusCmd = &cobra.Command{
 
 Examples:
   git multirepo status              # Show status for all repositories
+  git multirepo status --fetch      # Fetch from remote before showing status
   git multirepo status apps/admin   # Show status for specific repository
 
 For each repository, shows:
   1. Local Status (modified, untracked, staged files)
-  2. Remote Status (commits behind/ahead)
+  2. Remote Status (commits behind/ahead based on last fetch)
   3. How to resolve (step-by-step commands)`,
 	RunE: runStatus,
 }
 
 func init() {
+	statusCmd.Flags().BoolVar(&statusFetch, "fetch", false, "Fetch from remote before showing status")
 	rootCmd.AddCommand(statusCmd)
 }
 
@@ -431,8 +437,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		// Section 2: Remote Status
 		printBlue("  %s\n", i18n.T("remote_status"))
 
-		// Fetch from remote (suppress errors)
-		_ = git.Fetch(fullPath)
+		// Fetch from remote only if --fetch flag is set
+		if statusFetch {
+			if err := git.Fetch(fullPath); err != nil {
+				if err == git.ErrFetchTimeout {
+					printYellow("    ⚠ Fetch timed out, using cached data\n")
+				}
+			}
+		}
 
 		behindCount, _ := git.GetBehindCount(fullPath, branch)
 		aheadCount, _ := git.GetAheadCount(fullPath, branch)
@@ -449,13 +461,6 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			printGreen("    %s\n", i18n.T("up_to_date"))
 		}
 
-		// Check if remote branch exists
-		if behindCount == 0 && aheadCount == 0 {
-			// Try to verify remote branch exists
-			if err := git.Fetch(fullPath); err != nil {
-				printRed("    %s\n", i18n.T("cannot_fetch"))
-			}
-		}
 		fmt.Println()
 
 		// Section 3: How to resolve
