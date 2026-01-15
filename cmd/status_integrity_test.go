@@ -336,14 +336,19 @@ func TestStatusHookInfo(t *testing.T) {
 			runStatus(statusCmd, []string{})
 		})
 
-		// Should show hook status
-		if !strings.Contains(output, "Hooks:") {
-			t.Errorf("output should show hook status, got: %s", output)
+		// Should show "Hook:" line for each repository
+		if !strings.Contains(output, "Hook:") {
+			t.Errorf("output should show hook status per repository, got: %s", output)
 		}
 
-		// Should show 0/N installed
-		if !strings.Contains(output, "0/") {
-			t.Errorf("output should show 0 hooks installed, got: %s", output)
+		// Should show ✗ for not installed
+		if !strings.Contains(output, "✗") {
+			t.Errorf("output should show ✗ for uninstalled hooks, got: %s", output)
+		}
+
+		// Should show summary with 0/N installed
+		if !strings.Contains(output, "Summary:") || !strings.Contains(output, "0/") {
+			t.Errorf("output should show summary with 0 hooks installed, got: %s", output)
 		}
 
 		// Should show install suggestion
@@ -360,37 +365,27 @@ func TestStatusHookInfo(t *testing.T) {
 			runStatus(statusCmd, []string{})
 		})
 
-		// Should show hook status
-		if !strings.Contains(output, "Hooks:") {
-			t.Errorf("output should show hook status, got: %s", output)
+		// Should show "Hook:" line for each repository
+		if !strings.Contains(output, "Hook:") {
+			t.Errorf("output should show hook status per repository, got: %s", output)
 		}
 
-		// Should show all hooks installed (at least root repo)
-		if !strings.Contains(output, "/1 installed") && !strings.Contains(output, "/2 installed") {
-			t.Errorf("output should show hooks installed, got: %s", output)
+		// Should show ✓ for installed hooks
+		if !strings.Contains(output, "✓") {
+			t.Errorf("output should show ✓ for installed hooks, got: %s", output)
 		}
 
-		// Should NOT show install suggestion when all hooks installed
-		installedCount := 0
-		totalCount := 0
-		for _, line := range strings.Split(output, "\n") {
-			if strings.Contains(line, "Hooks:") {
-				// Parse "Hooks: X/Y installed"
-				parts := strings.Split(line, " ")
-				for i, part := range parts {
-					if part == "Hooks:" && i+1 < len(parts) {
-						counts := strings.Split(parts[i+1], "/")
-						if len(counts) == 2 {
-							installedCount = len(counts[0])
-							totalCount = len(counts[1])
-						}
-					}
-				}
+		// Should show summary with all hooks installed
+		if !strings.Contains(output, "Summary:") && !strings.Contains(output, "All") {
+			t.Errorf("output should show summary with hooks installed, got: %s", output)
+		}
+
+		// Check if "All N hooks installed" message is shown (no install suggestion)
+		if strings.Contains(output, "All") && strings.Contains(output, "hooks installed") {
+			// When all hooks installed, should NOT show install-hook suggestion
+			if strings.Contains(output, "git multirepo install-hook") {
+				t.Errorf("output should NOT suggest install-hook when all hooks installed, got: %s", output)
 			}
-		}
-
-		if installedCount == totalCount && strings.Contains(output, "git multirepo install-hook") {
-			t.Errorf("output should NOT suggest install-hook when all hooks installed, got: %s", output)
 		}
 	})
 }
@@ -412,9 +407,10 @@ func TestStatusHookInfo_WithWorkspaces(t *testing.T) {
 			runStatus(statusCmd, []string{})
 		})
 
-		// Should show hook status for all repos (root + 2 workspaces = 3 total)
-		if !strings.Contains(output, "Hooks:") {
-			t.Errorf("output should show hook status, got: %s", output)
+		// Should show "Hook:" line for each repository
+		hookLines := strings.Count(output, "Hook:")
+		if hookLines < 3 { // root + 2 workspaces
+			t.Errorf("output should show hook status for all repos (expected at least 3), got %d lines with 'Hook:'", hookLines)
 		}
 
 		// Should show install suggestion
@@ -440,9 +436,10 @@ func TestStatusHookInfo_WithWorkspaces(t *testing.T) {
 			runStatus(statusCmd, []string{})
 		})
 
-		// Should show partial installation
-		if !strings.Contains(output, "Hooks:") {
-			t.Errorf("output should show hook status, got: %s", output)
+		// Should show "Hook:" line for each repository
+		hookLines := strings.Count(output, "Hook:")
+		if hookLines < 3 { // root + 2 workspaces
+			t.Errorf("output should show hook status for all repos, got %d lines with 'Hook:'", hookLines)
 		}
 
 		// Should show both ✓ and ✗ markers
@@ -452,7 +449,7 @@ func TestStatusHookInfo_WithWorkspaces(t *testing.T) {
 			t.Errorf("output should show both ✓ and ✗ for partial installation, got: %s", output)
 		}
 
-		// Should still show install suggestion
+		// Should still show install suggestion in summary
 		if !strings.Contains(output, "git multirepo install-hook") {
 			t.Errorf("output should suggest install-hook command for partial installation, got: %s", output)
 		}
@@ -498,9 +495,10 @@ func TestStatusHookDifferentiation(t *testing.T) {
 			runStatus(statusCmd, []string{})
 		})
 
-		// Check output
-		if !strings.Contains(output, "Hooks:") {
-			t.Errorf("output should show hook status, got: %s", output)
+		// Should show "Hook:" line for each repository (root + 4 workspaces = 5)
+		hookLines := strings.Count(output, "Hook:")
+		if hookLines < 5 {
+			t.Errorf("output should show hook status for all repos (expected 5), got %d lines with 'Hook:'", hookLines)
 		}
 
 		// Should show correct counts
@@ -509,28 +507,36 @@ func TestStatusHookDifferentiation(t *testing.T) {
 		// merged = 1 (workspace2)
 		// otherOnly = 1 (workspace3)
 
-		// Check markers
+		// Check markers for each state
+		// 1. ✓ for git-multirepo only (workspace1)
 		if !strings.Contains(output, "✓") {
 			t.Errorf("output should show ✓ for git-multirepo only hook, got: %s", output)
 		}
 
+		// 2. ⚠️ for merged (workspace2) and other-only (workspace3)
 		if strings.Count(output, "⚠️") < 2 {
 			t.Errorf("output should show ⚠️ for merged and other-only hooks, got: %s", output)
 		}
 
-		if !strings.Contains(output, "(merged with other hook)") {
-			t.Errorf("output should show '(merged with other hook)' for workspace2, got: %s", output)
+		// 3. Check specific descriptions
+		if !strings.Contains(output, "Merged with other hook") {
+			t.Errorf("output should show 'Merged with other hook' for workspace2, got: %s", output)
 		}
 
-		if !strings.Contains(output, "(other hook only)") {
-			t.Errorf("output should show '(other hook only)' for workspace3, got: %s", output)
+		if !strings.Contains(output, "Other hook only") {
+			t.Errorf("output should show 'Other hook only' for workspace3, got: %s", output)
 		}
 
+		// 4. ✗ for no hook (workspace4 and root)
 		if !strings.Contains(output, "✗") {
 			t.Errorf("output should show ✗ for no hook, got: %s", output)
 		}
 
-		// Check installation message
+		// Check summary shows correct installation message
+		if !strings.Contains(output, "Summary:") {
+			t.Errorf("output should show summary, got: %s", output)
+		}
+
 		if !strings.Contains(output, "need installation") {
 			t.Errorf("output should show 'need installation' for otherOnly repos, got: %s", output)
 		}

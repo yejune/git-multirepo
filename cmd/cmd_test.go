@@ -853,7 +853,7 @@ func TestStatusWithNotCloned(t *testing.T) {
 			runStatus(statusCmd, []string{})
 		})
 
-		if !strings.Contains(output, "not cloned") {
+		if !strings.Contains(strings.ToLower(output), "not cloned") {
 			t.Errorf("output should show 'not cloned' status, got: %s", output)
 		}
 	})

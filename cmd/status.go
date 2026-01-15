@@ -311,46 +311,76 @@ func getHookStatus(repoRoot string) HookStatus {
 	return HookOtherOnly
 }
 
-// checkHookStatus checks hook installation status for all workspaces
-func checkHookStatus(ctx *common.WorkspaceContext) (ours int, mixed int, otherOnly int, total int, details []string) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return 0, 0, 0, 0, nil
+// getHookStatusForRepo returns hook status string for a single repo
+func getHookStatusForRepo(repoPath string) (symbol string, description string) {
+	status := getHookStatus(repoPath)
+
+	switch status {
+	case HookOurs:
+		return "✓", "Installed (git-multirepo only)"
+	case HookMixed:
+		return "⚠️ ", "Merged with other hook"
+	case HookOtherOnly:
+		return "⚠️ ", "Other hook only (git-multirepo not installed)"
+	case HookNone:
+		return "✗", "Not installed"
 	}
 
-	// Find all git repositories under current directory
-	gitRoots, err := findAllGitRoots(cwd)
-	if err != nil {
-		return 0, 0, 0, 0, nil
-	}
-	total = len(gitRoots)
+	return "?", "Unknown"
+}
 
-	for _, repoRoot := range gitRoots {
-		relPath, _ := filepath.Rel(ctx.RepoRoot, repoRoot)
-		if relPath == "." {
-			relPath = ctx.RepoRoot
-		} else if relPath == "" {
-			relPath = repoRoot
+// getHookSummary returns hook summary for all workspaces
+func getHookSummary(ctx *common.WorkspaceContext) string {
+	ours, mixed, otherOnly, total := 0, 0, 0, 0
+
+	// Root repo
+	total++
+	switch getHookStatus(ctx.RepoRoot) {
+	case HookOurs:
+		ours++
+	case HookMixed:
+		mixed++
+	case HookOtherOnly:
+		otherOnly++
+	}
+
+	// Workspaces
+	for _, ws := range ctx.Manifest.Workspaces {
+		fullPath := filepath.Join(ctx.RepoRoot, ws.Path)
+		if !git.IsRepo(fullPath) {
+			continue // Skip not cloned workspaces
 		}
+		total++
 
-		status := getHookStatus(repoRoot)
-
-		switch status {
+		switch getHookStatus(fullPath) {
 		case HookOurs:
 			ours++
-			details = append(details, fmt.Sprintf("  ✓ %s", relPath))
 		case HookMixed:
 			mixed++
-			details = append(details, fmt.Sprintf("  ⚠️  %s (merged with other hook)", relPath))
 		case HookOtherOnly:
 			otherOnly++
-			details = append(details, fmt.Sprintf("  ⚠️  %s (other hook only)", relPath))
-		case HookNone:
-			details = append(details, fmt.Sprintf("  ✗ %s", relPath))
 		}
 	}
 
-	return ours, mixed, otherOnly, total, details
+	installed := ours + mixed
+
+	if installed == total {
+		return fmt.Sprintf("All %d hooks installed.", total)
+	}
+
+	msg := fmt.Sprintf("Summary: %d/%d hooks installed", installed, total)
+	if mixed > 0 {
+		msg += fmt.Sprintf(" (%d merged)", mixed)
+	}
+	if otherOnly > 0 {
+		msg += fmt.Sprintf(", %d need installation", otherOnly)
+	}
+
+	if installed < total {
+		msg += ". Run 'git multirepo install-hook' to install."
+	}
+
+	return msg
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
@@ -374,36 +404,6 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	printCyan("Git Multirepo Status\n")
 	printGray("%s\n\n", strings.Repeat("─", 80))
-
-	// Check hook status
-	ours, mixed, otherOnly, total, details := checkHookStatus(ctx)
-	installed := ours + mixed
-	if total > 0 {
-		fmt.Printf("Hooks: %d/%d installed", installed, total)
-		if mixed > 0 {
-			fmt.Printf(" (%d merged)", mixed)
-		}
-		if otherOnly > 0 {
-			fmt.Printf(", %d need installation", otherOnly)
-		}
-		fmt.Println()
-
-		for _, detail := range details {
-			fmt.Println(detail)
-		}
-
-		if installed < total {
-			fmt.Println()
-			if otherOnly > 0 {
-				printYellow("Run 'git multirepo install-hook' to install/merge hooks\n")
-			} else {
-				printYellow("Run 'git multirepo install-hook' to install hooks\n")
-			}
-		}
-
-		fmt.Println()
-		printGray("%s\n\n", strings.Repeat("─", 80))
-	}
 
 	// Section 0: Multirepo Integrity Check
 	printGray("%s\n", strings.Repeat("━", 80))
@@ -482,8 +482,47 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	printGray("%s\n\n", strings.Repeat("━", 80))
 
+	// Show Root repository first
+	printCyan("Repository: . (root)\n")
+
+	// Hook status for root
+	symbol, desc := getHookStatusForRepo(ctx.RepoRoot)
+	fmt.Printf("  Hook: %s %s\n", symbol, desc)
+
+	// Get current branch
+	rootBranch, err := git.GetCurrentBranch(ctx.RepoRoot)
+	if err != nil {
+		rootBranch = "unknown"
+	}
+	fmt.Printf("  Branch: %s\n", rootBranch)
+
+	// Get workspace status for root
+	rootStatus, err := git.GetWorkspaceStatus(ctx.RepoRoot, nil)
+	if err != nil {
+		printRed("  Status: Failed to get status\n")
+	} else {
+		hasRootChanges := len(rootStatus.ModifiedFiles) > 0 || len(rootStatus.UntrackedFiles) > 0 || len(rootStatus.StagedFiles) > 0
+		if hasRootChanges {
+			totalFiles := len(rootStatus.ModifiedFiles) + len(rootStatus.UntrackedFiles) + len(rootStatus.StagedFiles)
+			printYellow("  Status: %d files changed\n", totalFiles)
+		} else {
+			printGreen("  Status: Clean\n")
+		}
+	}
+
+	fmt.Println()
+
 	if len(ctx.Manifest.Workspaces) == 0 {
 		fmt.Println(i18n.T("no_subs_registered"))
+
+		// Show hook summary for root only
+		hookSummary := getHookSummary(ctx)
+		if hookSummary != "" {
+			fmt.Println()
+			printGray("%s\n", strings.Repeat("─", 80))
+			fmt.Println(hookSummary)
+		}
+
 		return nil
 	}
 
@@ -493,20 +532,22 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("%s", i18n.T("sub_not_found", args[0]))
 	}
 
-	for idx, ws := range workspacesToProcess {
-		if idx > 0 {
-			// Add separator between workspaces
-			printGray("%s\n", strings.Repeat("─", 80))
-			fmt.Println()
-		}
+	for _, ws := range workspacesToProcess {
+		// Add separator between repositories
+		printGray("%s\n", strings.Repeat("─", 80))
+		fmt.Println()
 
 		fullPath := filepath.Join(ctx.RepoRoot, ws.Path)
 
 		// Workspace header
-		printCyan("%s", ws.Path)
+		printCyan("Repository: %s\n", ws.Path)
+
+		// Hook status
+		symbol, desc := getHookStatusForRepo(fullPath)
+		fmt.Printf("  Hook: %s %s\n", symbol, desc)
 
 		if !git.IsRepo(fullPath) {
-			printRed(" %s\n", i18n.T("not_cloned"))
+			printRed("  Status: Not cloned\n")
 			fmt.Println()
 			printBlue("  %s\n", i18n.T("how_to_resolve"))
 			printGray("    git multirepo sync\n")
@@ -519,8 +560,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			branch = "unknown"
 		}
-		printGray(" (%s)\n", branch)
-		fmt.Println()
+		fmt.Printf("  Branch: %s\n", branch)
 
 		// Section 1: Local Status
 		printBlue("  %s\n", i18n.T("local_status"))
@@ -626,6 +666,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			printGreen("  %s\n", i18n.T("no_action_needed"))
 			fmt.Println()
 		}
+	}
+
+	// Show hook summary at the end
+	hookSummary := getHookSummary(ctx)
+	if hookSummary != "" {
+		fmt.Println()
+		printGray("%s\n", strings.Repeat("─", 80))
+		fmt.Println(hookSummary)
 	}
 
 	return nil
