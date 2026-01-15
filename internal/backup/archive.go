@@ -18,31 +18,49 @@ func ArchiveOldBackups(backupDir string) error {
 	currentYear := now.Format("2006")
 	currentMonth := now.Format("01")
 
-	fmt.Println("\n[Archive] Checking for old backups to archive...")
+	fmt.Println("\n[Archive] Starting automatic backup archiving...")
+	fmt.Printf("  Current month: %s/%s (will be skipped)\n", currentYear, currentMonth)
+
+	totalArchived := 0
+	totalSkipped := 0
 
 	// Process modified backups
-	if err := archiveBackupType(backupDir, "modified", currentYear, currentMonth); err != nil {
+	archived, skipped, err := archiveBackupType(backupDir, "modified", currentYear, currentMonth)
+	if err != nil {
 		return fmt.Errorf("failed to archive modified backups: %w", err)
 	}
+	totalArchived += archived
+	totalSkipped += skipped
 
 	// Process patched backups
-	if err := archiveBackupType(backupDir, "patched", currentYear, currentMonth); err != nil {
+	archived, skipped, err = archiveBackupType(backupDir, "patched", currentYear, currentMonth)
+	if err != nil {
 		return fmt.Errorf("failed to archive patched backups: %w", err)
 	}
+	totalArchived += archived
+	totalSkipped += skipped
 
-	fmt.Println("[Archive] Completed")
+	fmt.Printf("[Archive] Completed: %d total archive(s) created, %d month(s) skipped (current)\n",
+		totalArchived, totalSkipped)
 	return nil
 }
 
 // archiveBackupType archives a specific backup type (modified or patched)
 // New structure: backup/{type}/{workspace|multirepo}/{path}/{branch}/{year}/{month}
-func archiveBackupType(backupDir, backupType, currentYear, currentMonth string) error {
+// Returns: (archived count, skipped count, error)
+func archiveBackupType(backupDir, backupType, currentYear, currentMonth string) (int, int, error) {
 	typeDir := filepath.Join(backupDir, backupType)
+
+	fmt.Printf("\n  [Archive] Processing '%s' backups...\n", backupType)
 
 	// Check if directory exists
 	if _, err := os.Stat(typeDir); os.IsNotExist(err) {
-		return nil // No backups to archive
+		fmt.Printf("  [Archive] No '%s' backups directory found\n", backupType)
+		return 0, 0, nil // No backups to archive
 	}
+
+	totalArchived := 0
+	totalSkipped := 0
 
 	// Process both workspace and multirepo directories
 	for _, topLevel := range []string{"workspace", "multirepo"} {
@@ -53,33 +71,53 @@ func archiveBackupType(backupDir, backupType, currentYear, currentMonth string) 
 			continue // Skip if doesn't exist
 		}
 
+		var archived, skipped int
 		var err error
 		if topLevel == "workspace" {
 			// For workspace: directly access branch directories
-			err = archiveWorkspaceBackups(topLevelDir, backupDir, backupType, currentYear, currentMonth)
+			archived, skipped, err = archiveWorkspaceBackups(topLevelDir, backupDir, backupType, currentYear, currentMonth)
 		} else {
 			// For multirepo: traverse singlerepo directories first
-			err = archiveMultirepoBackups(topLevelDir, backupDir, backupType, currentYear, currentMonth)
+			archived, skipped, err = archiveMultirepoBackups(topLevelDir, backupDir, backupType, currentYear, currentMonth)
 		}
 
 		if err != nil {
-			return fmt.Errorf("failed to archive %s backups: %w", topLevel, err)
+			return totalArchived, totalSkipped, fmt.Errorf("failed to archive %s backups: %w", topLevel, err)
 		}
+
+		totalArchived += archived
+		totalSkipped += skipped
 	}
 
-	return nil
+	return totalArchived, totalSkipped, nil
+}
+
+// formatSize formats byte size to human-readable format
+func formatSize(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
 // archiveWorkspaceBackups handles workspace (root repository) backups
 // Structure: backup/{type}/workspace/{branch}/{year}/{month}/
-func archiveWorkspaceBackups(workspaceDir, backupDir, backupType, currentYear, currentMonth string) error {
+// Returns: (archived count, skipped count, error)
+func archiveWorkspaceBackups(workspaceDir, backupDir, backupType, currentYear, currentMonth string) (int, int, error) {
 	// Get all branch directories
 	branches, err := os.ReadDir(workspaceDir)
 	if err != nil {
-		return fmt.Errorf("failed to read workspace directory: %w", err)
+		return 0, 0, fmt.Errorf("failed to read workspace directory: %w", err)
 	}
 
 	archivedCount := 0
+	skippedCount := 0
 
 	for _, branchEntry := range branches {
 		if !branchEntry.IsDir() {
@@ -121,7 +159,7 @@ func archiveWorkspaceBackups(workspaceDir, backupDir, backupType, currentYear, c
 
 				// Skip current month
 				if year == currentYear && month == currentMonth {
-					fmt.Printf("  [Archive] Skipping current month: workspace/%s/%s/%s\n", branch, year, month)
+					skippedCount++
 					continue
 				}
 
@@ -143,33 +181,43 @@ func archiveWorkspaceBackups(workspaceDir, backupDir, backupType, currentYear, c
 					continue
 				}
 
-				fmt.Printf("  [Archive] Archiving workspace/%s/%s/%s -> %s\n", branch, year, month, archiveName)
-
 				// Create archived directory if not exists
 				archivedDir := filepath.Join(backupDir, "archived")
 				if err := os.MkdirAll(archivedDir, 0755); err != nil {
-					return fmt.Errorf("failed to create archived directory: %w", err)
+					return 0, 0, fmt.Errorf("failed to create archived directory: %w", err)
 				}
 
 				// Create tar.gz archive from monthPath
 				if err := createTarGzFromDir(monthPath, archivePath); err != nil {
-					return fmt.Errorf("failed to create archive %s: %w", archiveName, err)
+					return 0, 0, fmt.Errorf("failed to create archive %s: %w", archiveName, err)
 				}
 
 				// Verify archive
 				if err := verifyTarGz(archivePath); err != nil {
 					os.Remove(archivePath)
-					return fmt.Errorf("archive verification failed for %s: %w", archiveName, err)
+					return 0, 0, fmt.Errorf("archive verification failed for %s: %w", archiveName, err)
 				}
 
-				fmt.Printf("  [Archive] Verified: %s\n", archiveName)
+				// Get archive file size
+				fileInfo, err := os.Stat(archivePath)
+				var size int64
+				if err == nil {
+					size = fileInfo.Size()
+				}
+
+				// Get relative path for display
+				relPath, err := filepath.Rel(backupDir, archivePath)
+				if err != nil {
+					relPath = archivePath
+				}
+
+				fmt.Printf("  [Archive] ✓ Created: %s (size: %s)\n", relPath, formatSize(size))
 
 				// Remove original directory
 				if err := os.RemoveAll(monthPath); err != nil {
-					return fmt.Errorf("failed to remove original directory %s: %w", monthPath, err)
+					return 0, 0, fmt.Errorf("failed to remove original directory %s: %w", monthPath, err)
 				}
 
-				fmt.Printf("  [Archive] Removed original: workspace/%s/%s/%s\n", branch, year, month)
 				archivedCount++
 
 				// Clean up empty year directory
@@ -187,22 +235,26 @@ func archiveWorkspaceBackups(workspaceDir, backupDir, backupType, currentYear, c
 	}
 
 	if archivedCount > 0 {
-		fmt.Printf("  [Archive] Archived %d workspace backup(s) for %s\n", archivedCount, backupType)
+		fmt.Printf("  [Archive] ✓ %d workspace archive(s) created for %s\n", archivedCount, backupType)
+	} else if skippedCount > 0 {
+		fmt.Printf("  [Archive] No old workspace backups to archive for %s (only current month)\n", backupType)
 	}
 
-	return nil
+	return archivedCount, skippedCount, nil
 }
 
 // archiveMultirepoBackups handles multirepo (singlerepo) backups
 // Structure: backup/{type}/multirepo/{workspace}/{branch}/{year}/{month}/
-func archiveMultirepoBackups(multirepoDir, backupDir, backupType, currentYear, currentMonth string) error {
+// Returns: (archived count, skipped count, error)
+func archiveMultirepoBackups(multirepoDir, backupDir, backupType, currentYear, currentMonth string) (int, int, error) {
 	// Get all workspace directories
 	workspaces, err := os.ReadDir(multirepoDir)
 	if err != nil {
-		return fmt.Errorf("failed to read multirepo directory: %w", err)
+		return 0, 0, fmt.Errorf("failed to read multirepo directory: %w", err)
 	}
 
 	archivedCount := 0
+	skippedCount := 0
 
 	for _, workspaceEntry := range workspaces {
 		if !workspaceEntry.IsDir() {
@@ -259,7 +311,7 @@ func archiveMultirepoBackups(multirepoDir, backupDir, backupType, currentYear, c
 
 					// Skip current month
 					if year == currentYear && month == currentMonth {
-						fmt.Printf("  [Archive] Skipping current month: multirepo/%s/%s/%s/%s\n", workspace, branch, year, month)
+						skippedCount++
 						continue
 					}
 
@@ -277,33 +329,43 @@ func archiveMultirepoBackups(multirepoDir, backupDir, backupType, currentYear, c
 						continue
 					}
 
-					fmt.Printf("  [Archive] Archiving multirepo/%s/%s/%s/%s -> %s\n", workspace, branch, year, month, archiveName)
-
 					// Create archived directory if not exists
 					archivedDir := filepath.Join(backupDir, "archived")
 					if err := os.MkdirAll(archivedDir, 0755); err != nil {
-						return fmt.Errorf("failed to create archived directory: %w", err)
+						return 0, 0, fmt.Errorf("failed to create archived directory: %w", err)
 					}
 
 					// Create tar.gz archive from monthPath
 					if err := createTarGzFromDir(monthPath, archivePath); err != nil {
-						return fmt.Errorf("failed to create archive %s: %w", archiveName, err)
+						return 0, 0, fmt.Errorf("failed to create archive %s: %w", archiveName, err)
 					}
 
 					// Verify archive
 					if err := verifyTarGz(archivePath); err != nil {
 						os.Remove(archivePath)
-						return fmt.Errorf("archive verification failed for %s: %w", archiveName, err)
+						return 0, 0, fmt.Errorf("archive verification failed for %s: %w", archiveName, err)
 					}
 
-					fmt.Printf("  [Archive] Verified: %s\n", archiveName)
+					// Get archive file size
+					fileInfo, err := os.Stat(archivePath)
+					var size int64
+					if err == nil {
+						size = fileInfo.Size()
+					}
+
+					// Get relative path for display
+					relPath, err := filepath.Rel(backupDir, archivePath)
+					if err != nil {
+						relPath = archivePath
+					}
+
+					fmt.Printf("  [Archive] ✓ Created: %s (size: %s)\n", relPath, formatSize(size))
 
 					// Remove original directory
 					if err := os.RemoveAll(monthPath); err != nil {
-						return fmt.Errorf("failed to remove original directory %s: %w", monthPath, err)
+						return 0, 0, fmt.Errorf("failed to remove original directory %s: %w", monthPath, err)
 					}
 
-					fmt.Printf("  [Archive] Removed original: multirepo/%s/%s/%s/%s\n", workspace, branch, year, month)
 					archivedCount++
 
 					// Clean up empty year directory
@@ -327,10 +389,12 @@ func archiveMultirepoBackups(multirepoDir, backupDir, backupType, currentYear, c
 	}
 
 	if archivedCount > 0 {
-		fmt.Printf("  [Archive] Archived %d multirepo backup(s) for %s\n", archivedCount, backupType)
+		fmt.Printf("  [Archive] ✓ %d multirepo archive(s) created for %s\n", archivedCount, backupType)
+	} else if skippedCount > 0 {
+		fmt.Printf("  [Archive] No old multirepo backups to archive for %s (only current month)\n", backupType)
 	}
 
-	return nil
+	return archivedCount, skippedCount, nil
 }
 
 // sanitizePath replaces / with _ in path segments for safe filenames
