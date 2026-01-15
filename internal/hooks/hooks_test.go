@@ -219,7 +219,6 @@ func TestUninstall(t *testing.T) {
 		}
 	})
 
-
 	t.Run("uninstall fails when hook is a directory", func(t *testing.T) {
 		dir := t.TempDir()
 		gitDir := filepath.Join(dir, ".git")

@@ -102,8 +102,8 @@ func TestIsNewerVersion(t *testing.T) {
 		{"1.0.0", "1.0.0", false},
 		{"1.0.0", "1.0.1", false},
 		{"1.0.0", "2.0.0", false},
-		{"0.0.1", "dev", true},  // dev is always updatable
-		{"1.0.0", "dev", true},  // dev is always updatable
+		{"0.0.1", "dev", true}, // dev is always updatable
+		{"1.0.0", "dev", true}, // dev is always updatable
 		{"invalid", "1.0.0", false},
 		{"1.0.0", "invalid", false},
 		{"1.0", "1.0.0", false}, // incomplete version

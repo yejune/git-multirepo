@@ -19,6 +19,13 @@ func TestHookCommandsMultipleWorkspaces(t *testing.T) {
 		t.Fatalf("Failed to create main .git/hooks directory: %v", err)
 	}
 
+	// Create .git.multirepos to make it a root repository
+	manifestPath := filepath.Join(tmpDir, ".git.multirepos")
+	manifestContent := `workspaces: []`
+	if err := os.WriteFile(manifestPath, []byte(manifestContent), 0644); err != nil {
+		t.Fatalf("Failed to create manifest: %v", err)
+	}
+
 	// Create workspace1 git repo
 	workspace1Dir := filepath.Join(tmpDir, "workspace1")
 	if err := os.MkdirAll(workspace1Dir, 0755); err != nil {
@@ -63,10 +70,10 @@ func TestHookCommandsMultipleWorkspaces(t *testing.T) {
 		if !hooks.IsInstalled(tmpDir) {
 			t.Errorf("Hook was not installed at root: %s", tmpDir)
 		}
-		if !hooks.IsInstalled(workspace1Dir) {
+		if !hooks.IsWorkspaceHookInstalled(workspace1Dir) {
 			t.Errorf("Hook was not installed at workspace1: %s", workspace1Dir)
 		}
-		if !hooks.IsInstalled(workspace2Dir) {
+		if !hooks.IsWorkspaceHookInstalled(workspace2Dir) {
 			t.Errorf("Hook was not installed at workspace2: %s", workspace2Dir)
 		}
 	})
@@ -86,10 +93,10 @@ func TestHookCommandsMultipleWorkspaces(t *testing.T) {
 		if hooks.IsInstalled(tmpDir) {
 			t.Errorf("Hook is still installed at root: %s", tmpDir)
 		}
-		if hooks.IsInstalled(workspace1Dir) {
+		if hooks.IsWorkspaceHookInstalled(workspace1Dir) {
 			t.Errorf("Hook is still installed at workspace1: %s", workspace1Dir)
 		}
-		if hooks.IsInstalled(workspace2Dir) {
+		if hooks.IsWorkspaceHookInstalled(workspace2Dir) {
 			t.Errorf("Hook is still installed at workspace2: %s", workspace2Dir)
 		}
 	})
@@ -114,10 +121,10 @@ func TestHookCommandsMultipleWorkspaces(t *testing.T) {
 		if !hooks.IsInstalled(tmpDir) {
 			t.Errorf("Hook was not installed at root after second install")
 		}
-		if !hooks.IsInstalled(workspace1Dir) {
+		if !hooks.IsWorkspaceHookInstalled(workspace1Dir) {
 			t.Errorf("Hook was not installed at workspace1 after second install")
 		}
-		if !hooks.IsInstalled(workspace2Dir) {
+		if !hooks.IsWorkspaceHookInstalled(workspace2Dir) {
 			t.Errorf("Hook was not installed at workspace2 after second install")
 		}
 	})
@@ -132,6 +139,13 @@ func TestHookCommandsSingleRepository(t *testing.T) {
 	hooksDir := filepath.Join(gitDir, "hooks")
 	if err := os.MkdirAll(hooksDir, 0755); err != nil {
 		t.Fatalf("Failed to create .git/hooks directory: %v", err)
+	}
+
+	// Create .git.multirepos to make it a root repository
+	manifestPath := filepath.Join(tmpDir, ".git.multirepos")
+	manifestContent := `workspaces: []`
+	if err := os.WriteFile(manifestPath, []byte(manifestContent), 0644); err != nil {
+		t.Fatalf("Failed to create manifest: %v", err)
 	}
 
 	// Save original working directory
@@ -280,12 +294,26 @@ func TestHookCommandsDoesNotAffectParent(t *testing.T) {
 		t.Fatalf("Failed to create parent .git/hooks directory: %v", err)
 	}
 
+	// Create .git.multirepos in parent to make it a root repository
+	manifestPath := filepath.Join(tmpDir, ".git.multirepos")
+	manifestContent := `workspaces: []`
+	if err := os.WriteFile(manifestPath, []byte(manifestContent), 0644); err != nil {
+		t.Fatalf("Failed to create manifest: %v", err)
+	}
+
 	// Create child directory with git repo
 	childDir := filepath.Join(tmpDir, "child")
 	childGitDir := filepath.Join(childDir, ".git")
 	childHooksDir := filepath.Join(childGitDir, "hooks")
 	if err := os.MkdirAll(childHooksDir, 0755); err != nil {
 		t.Fatalf("Failed to create child .git/hooks directory: %v", err)
+	}
+
+	// Create .git.multirepos in child to make it a root repository
+	childManifestPath := filepath.Join(childDir, ".git.multirepos")
+	childManifestContent := `workspaces: []`
+	if err := os.WriteFile(childManifestPath, []byte(childManifestContent), 0644); err != nil {
+		t.Fatalf("Failed to create child manifest: %v", err)
 	}
 
 	// Create subdir under child with git repo
@@ -319,13 +347,13 @@ func TestHookCommandsDoesNotAffectParent(t *testing.T) {
 			t.Error("Parent hook should NOT be installed")
 		}
 
-		// Check child has hook
+		// Check child has hook (it's a root repo with .git.multirepos)
 		if !hooks.IsInstalled(childDir) {
 			t.Error("Child hook should be installed")
 		}
 
-		// Check subdir has hook
-		if !hooks.IsInstalled(subdirDir) {
+		// Check subdir has hook (it's a workspace under child)
+		if !hooks.IsWorkspaceHookInstalled(subdirDir) {
 			t.Error("Subdir hook should be installed")
 		}
 	})
@@ -369,7 +397,7 @@ func TestHookCommandsDoesNotAffectParent(t *testing.T) {
 		}
 
 		// Check subdir does NOT have hook
-		if hooks.IsInstalled(subdirDir) {
+		if hooks.IsWorkspaceHookInstalled(subdirDir) {
 			t.Error("Subdir hook should be removed")
 		}
 	})
@@ -385,6 +413,13 @@ func TestHookCommandsDeepNesting(t *testing.T) {
 	//   level1/level2/level3/level4/level5/.git  ← 5단계
 
 	tmpDir := t.TempDir()
+
+	// Create .git.multirepos at root to make it a root repository
+	manifestPath := filepath.Join(tmpDir, ".git.multirepos")
+	manifestContent := `workspaces: []`
+	if err := os.WriteFile(manifestPath, []byte(manifestContent), 0644); err != nil {
+		t.Fatalf("Failed to create manifest: %v", err)
+	}
 
 	// Build nested structure
 	levels := []string{
@@ -409,6 +444,13 @@ func TestHookCommandsDeepNesting(t *testing.T) {
 		levelPaths = append(levelPaths, fullPath)
 	}
 
+	// Create .git.multirepos at level3 to make it a root repository
+	level3ManifestPath := filepath.Join(levelPaths[2], ".git.multirepos")
+	level3ManifestContent := `workspaces: []`
+	if err := os.WriteFile(level3ManifestPath, []byte(level3ManifestContent), 0644); err != nil {
+		t.Fatalf("Failed to create level3 manifest: %v", err)
+	}
+
 	// Save original working directory
 	origWd, err := os.Getwd()
 	if err != nil {
@@ -428,10 +470,23 @@ func TestHookCommandsDeepNesting(t *testing.T) {
 		}
 
 		// Verify all hooks are installed
-		for i, levelPath := range levelPaths {
-			if !hooks.IsInstalled(levelPath) {
-				t.Errorf("Hook not installed at level %d (%s)", i+1, levelPath)
-			}
+		// level1 and level2 are workspaces (under root tmpDir)
+		// level3 is a root (has .git.multirepos)
+		// level4 and level5 are workspaces (under level3)
+		if !hooks.IsWorkspaceHookInstalled(levelPaths[0]) {
+			t.Errorf("Hook not installed at level 1 (%s)", levelPaths[0])
+		}
+		if !hooks.IsWorkspaceHookInstalled(levelPaths[1]) {
+			t.Errorf("Hook not installed at level 2 (%s)", levelPaths[1])
+		}
+		if !hooks.IsInstalled(levelPaths[2]) {
+			t.Errorf("Hook not installed at level 3 (%s)", levelPaths[2])
+		}
+		if !hooks.IsWorkspaceHookInstalled(levelPaths[3]) {
+			t.Errorf("Hook not installed at level 4 (%s)", levelPaths[3])
+		}
+		if !hooks.IsWorkspaceHookInstalled(levelPaths[4]) {
+			t.Errorf("Hook not installed at level 5 (%s)", levelPaths[4])
 		}
 	})
 
@@ -447,10 +502,20 @@ func TestHookCommandsDeepNesting(t *testing.T) {
 		}
 
 		// Verify all hooks are removed
-		for i, levelPath := range levelPaths {
-			if hooks.IsInstalled(levelPath) {
-				t.Errorf("Hook still exists at level %d (%s)", i+1, levelPath)
-			}
+		if hooks.IsWorkspaceHookInstalled(levelPaths[0]) {
+			t.Errorf("Hook still exists at level 1 (%s)", levelPaths[0])
+		}
+		if hooks.IsWorkspaceHookInstalled(levelPaths[1]) {
+			t.Errorf("Hook still exists at level 2 (%s)", levelPaths[1])
+		}
+		if hooks.IsInstalled(levelPaths[2]) {
+			t.Errorf("Hook still exists at level 3 (%s)", levelPaths[2])
+		}
+		if hooks.IsWorkspaceHookInstalled(levelPaths[3]) {
+			t.Errorf("Hook still exists at level 4 (%s)", levelPaths[3])
+		}
+		if hooks.IsWorkspaceHookInstalled(levelPaths[4]) {
+			t.Errorf("Hook still exists at level 5 (%s)", levelPaths[4])
 		}
 	})
 
@@ -468,19 +533,24 @@ func TestHookCommandsDeepNesting(t *testing.T) {
 		}
 
 		// Check level1, level2: should NOT have hooks (ancestors)
-		ancestorPaths := levelPaths[:2]
-		for i, levelPath := range ancestorPaths {
-			if hooks.IsInstalled(levelPath) {
-				t.Errorf("Ancestor hook should NOT exist at level %d (%s)", i+1, levelPath)
-			}
+		if hooks.IsWorkspaceHookInstalled(levelPaths[0]) {
+			t.Errorf("Ancestor hook should NOT exist at level 1 (%s)", levelPaths[0])
+		}
+		if hooks.IsWorkspaceHookInstalled(levelPaths[1]) {
+			t.Errorf("Ancestor hook should NOT exist at level 2 (%s)", levelPaths[1])
 		}
 
-		// Check level3, level4, level5: should HAVE hooks (self + descendants)
-		descendantPaths := levelPaths[2:]
-		for i, levelPath := range descendantPaths {
-			if !hooks.IsInstalled(levelPath) {
-				t.Errorf("Hook should exist at level %d (%s)", i+3, levelPath)
-			}
+		// Check level3: should HAVE hook (root with .git.multirepos)
+		if !hooks.IsInstalled(levelPaths[2]) {
+			t.Errorf("Hook should exist at level 3 (%s)", levelPaths[2])
+		}
+
+		// Check level4, level5: should HAVE hooks (workspaces under level3)
+		if !hooks.IsWorkspaceHookInstalled(levelPaths[3]) {
+			t.Errorf("Hook should exist at level 4 (%s)", levelPaths[3])
+		}
+		if !hooks.IsWorkspaceHookInstalled(levelPaths[4]) {
+			t.Errorf("Hook should exist at level 5 (%s)", levelPaths[4])
 		}
 	})
 }

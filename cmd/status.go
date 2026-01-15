@@ -265,10 +265,10 @@ func findRemoteURLMismatches(ctx *common.WorkspaceContext) []IntegrityIssue {
 type HookStatus int
 
 const (
-	HookNone HookStatus = iota     // ✗ No hook at all
-	HookOtherOnly                  // ⚠️ Other hook only (git-multirepo not installed)
-	HookOurs                       // ✓ git-multirepo only (clean)
-	HookMixed                      // ⚠️ git-multirepo + other hook (merged)
+	HookNone      HookStatus = iota // ✗ No hook at all
+	HookOtherOnly                   // ⚠️ Other hook only (git-multirepo not installed)
+	HookOurs                        // ✓ git-multirepo only (clean)
+	HookMixed                       // ⚠️ git-multirepo + other hook (merged)
 )
 
 // getHookStatus determines the hook status for a repository
@@ -392,12 +392,18 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	// Define color printers
 	// Use Fprintf to always print to the correct stdout
 	var (
-		printCyan   = func(format string, a ...interface{}) { color.New(color.FgCyan, color.Bold).Fprintf(os.Stdout, format, a...) }
-		printBlue   = func(format string, a ...interface{}) { color.New(color.FgBlue, color.Bold).Fprintf(os.Stdout, format, a...) }
+		printCyan = func(format string, a ...interface{}) {
+			color.New(color.FgCyan, color.Bold).Fprintf(os.Stdout, format, a...)
+		}
+		printBlue = func(format string, a ...interface{}) {
+			color.New(color.FgBlue, color.Bold).Fprintf(os.Stdout, format, a...)
+		}
 		printGreen  = func(format string, a ...interface{}) { color.New(color.FgGreen).Fprintf(os.Stdout, format, a...) }
 		printYellow = func(format string, a ...interface{}) { color.New(color.FgYellow).Fprintf(os.Stdout, format, a...) }
-		printRed    = func(format string, a ...interface{}) { color.New(color.FgRed, color.Bold).Fprintf(os.Stdout, format, a...) }
-		printGray   = func(format string, a ...interface{}) { color.New(color.Faint).Fprintf(os.Stdout, format, a...) }
+		printRed    = func(format string, a ...interface{}) {
+			color.New(color.FgRed, color.Bold).Fprintf(os.Stdout, format, a...)
+		}
+		printGray = func(format string, a ...interface{}) { color.New(color.Faint).Fprintf(os.Stdout, format, a...) }
 	)
 
 	ctx, err := common.LoadWorkspaceContext()
@@ -429,25 +435,25 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			case "critical":
 				printRed("%s\n", issue.Message)
 				if issue.Path != "" {
-					printRed(i18n.T("nested_manifest_path") + "\n", issue.Path)
+					printRed(i18n.T("nested_manifest_path")+"\n", issue.Path)
 				}
 				fmt.Println()
 				printGray("%s\n", i18n.T("nested_manifest_explanation"))
 				printGray("%s\n", i18n.T("nested_manifest_fix"))
-				printGray(i18n.T("nested_manifest_cmd") + "\n", issue.Fix)
+				printGray(i18n.T("nested_manifest_cmd")+"\n", issue.Fix)
 				fmt.Println()
 
 			case "warning":
 				if strings.Contains(issue.Message, "Parent manifest") || strings.Contains(issue.Message, "부모 manifest") {
 					printYellow("%s\n", issue.Message)
-					printYellow(i18n.T("parent_manifest_path") + "\n", issue.Path)
+					printYellow(i18n.T("parent_manifest_path")+"\n", issue.Path)
 					printGray("%s\n", i18n.T("parent_manifest_explanation"))
 					fmt.Println()
 				} else if strings.Contains(issue.Message, "unregistered") || strings.Contains(issue.Message, "미등록") {
 					printYellow("%s\n", issue.Message)
 					for _, wsPath := range strings.Split(issue.Path, "\n") {
 						if wsPath != "" {
-							printGray(i18n.T("unregistered_workspace_item") + "\n", wsPath)
+							printGray(i18n.T("unregistered_workspace_item")+"\n", wsPath)
 						}
 					}
 					fmt.Println()
@@ -456,13 +462,13 @@ func runStatus(cmd *cobra.Command, args []string) error {
 					fmt.Println()
 				} else if strings.Contains(issue.Message, "Remote URL") || strings.Contains(issue.Message, "Remote URL") {
 					printYellow("%s\n", issue.Message)
-					printGray(i18n.T("remote_url_workspace") + "\n", issue.Path)
+					printGray(i18n.T("remote_url_workspace")+"\n", issue.Path)
 					lines := strings.Split(issue.Fix, "\n")
 					for _, line := range lines {
 						if strings.HasPrefix(line, "Expected:") {
-							printGray(i18n.T("remote_url_expected") + "\n", strings.TrimPrefix(line, "Expected: "))
+							printGray(i18n.T("remote_url_expected")+"\n", strings.TrimPrefix(line, "Expected: "))
 						} else if strings.HasPrefix(line, "Actual:") {
-							printGray(i18n.T("remote_url_actual") + "\n", strings.TrimPrefix(line, "Actual: "))
+							printGray(i18n.T("remote_url_actual")+"\n", strings.TrimPrefix(line, "Actual: "))
 						}
 					}
 					fmt.Println()

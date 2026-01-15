@@ -12,10 +12,10 @@ import (
 
 // WorkspaceContext holds the repository root and manifest for workspace operations
 type WorkspaceContext struct {
-	RepoRoot     string
-	Manifest     *manifest.Manifest
-	CurrentDir   string // Directory where command was executed
-	ScanRootDir  string // Root directory to scan (for workspace subdirectory sync)
+	RepoRoot    string
+	Manifest    *manifest.Manifest
+	CurrentDir  string // Directory where command was executed
+	ScanRootDir string // Root directory to scan (for workspace subdirectory sync)
 }
 
 // LoadWorkspaceContext initializes workspace context by loading repository root and manifest

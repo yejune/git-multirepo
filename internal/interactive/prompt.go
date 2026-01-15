@@ -18,11 +18,11 @@ func ResolveConflict(filename string, options []string) (int, error) {
 		Options: options,
 		Description: func(value string, index int) string {
 			descriptions := map[string]string{
-				"Skip this patch":     "Continue without applying this change",
-				"Apply anyway":        "Force apply despite conflicts",
-				"Edit manually":       "Open in editor to resolve manually",
-				"Show diff":           "View the conflicting changes",
-				"Abort all":           "Stop the entire operation",
+				"Skip this patch": "Continue without applying this change",
+				"Apply anyway":    "Force apply despite conflicts",
+				"Edit manually":   "Open in editor to resolve manually",
+				"Show diff":       "View the conflicting changes",
+				"Abort all":       "Stop the entire operation",
 			}
 			if desc, ok := descriptions[value]; ok {
 				return desc

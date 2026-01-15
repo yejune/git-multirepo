@@ -16,8 +16,8 @@ import (
 )
 
 var pushCmd = &cobra.Command{
-	Use:    "push [path]",
-	Short:  "Push repository to organization",
+	Use:   "push [path]",
+	Short: "Push repository to organization",
 	Long: `Push local commits to organization repository.
 
 Creates a private repository if it doesn't exist.

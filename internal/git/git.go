@@ -281,7 +281,6 @@ func RemoveFromGitignore(repoRoot, path string) error {
 	return os.WriteFile(gitignorePath, []byte(strings.Join(newLines, "\n")), 0644)
 }
 
-
 // HasChanges checks if there are uncommitted changes
 func HasChanges(path string) (bool, error) {
 	cmd := exec.Command("git", "-C", path, "status", "--porcelain")

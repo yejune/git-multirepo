@@ -113,7 +113,6 @@ func (m *Manifest) Remove(path string) bool {
 	return false
 }
 
-
 // Find finds a workspace by path
 func (m *Manifest) Find(path string) *WorkspaceEntry {
 	for i := range m.Workspaces {

@@ -20,10 +20,10 @@ func TestWorkerCount_Integration(t *testing.T) {
 	t.Run("default behavior - CPU based", func(t *testing.T) {
 		os.Unsetenv("GIT_MULTIREPO_WORKERS")
 		workers := getOptimalWorkerCount()
-		
+
 		// Log for manual verification
 		t.Logf("Default worker count: %d (based on runtime.NumCPU())", workers)
-		
+
 		// Verify constraints
 		if workers < 1 {
 			t.Errorf("workers must be >= 1, got %d", workers)
@@ -36,7 +36,7 @@ func TestWorkerCount_Integration(t *testing.T) {
 	t.Run("user override - custom value", func(t *testing.T) {
 		os.Setenv("GIT_MULTIREPO_WORKERS", "10")
 		workers := getOptimalWorkerCount()
-		
+
 		if workers != 10 {
 			t.Errorf("expected 10 workers from env var, got %d", workers)
 		}
@@ -46,7 +46,7 @@ func TestWorkerCount_Integration(t *testing.T) {
 	t.Run("production scenario - high concurrency", func(t *testing.T) {
 		os.Setenv("GIT_MULTIREPO_WORKERS", "24")
 		workers := getOptimalWorkerCount()
-		
+
 		if workers != 24 {
 			t.Errorf("expected 24 workers for high concurrency, got %d", workers)
 		}
@@ -56,7 +56,7 @@ func TestWorkerCount_Integration(t *testing.T) {
 	t.Run("resource constrained - low workers", func(t *testing.T) {
 		os.Setenv("GIT_MULTIREPO_WORKERS", "4")
 		workers := getOptimalWorkerCount()
-		
+
 		if workers != 4 {
 			t.Errorf("expected 4 workers for constrained environment, got %d", workers)
 		}
