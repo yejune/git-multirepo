@@ -41,92 +41,122 @@ func init() {
 	rootCmd.AddCommand(uninstallHookCmd)
 }
 
-func runInstallHook(cmd *cobra.Command, args []string) error {
-	// Get repository root
-	repoRoot := "."
-	if cwd, err := os.Getwd(); err == nil {
-		repoRoot = cwd
-	}
+// findAllGitRoots finds all .git directories under the given path
+func findAllGitRoots(startPath string) ([]string, error) {
+	var gitRoots []string
 
-	// Find actual git root
-	gitDir := filepath.Join(repoRoot, ".git")
-	for {
-		if _, err := os.Stat(gitDir); err == nil {
-			break
+	err := filepath.Walk(startPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Skip errors
 		}
-		parent := filepath.Dir(repoRoot)
-		if parent == repoRoot {
-			return fmt.Errorf("not in a git repository")
-		}
-		repoRoot = parent
-		gitDir = filepath.Join(repoRoot, ".git")
-	}
 
-	if hooks.IsInstalled(repoRoot) {
-		fmt.Println(i18n.T("hook_already_installed"))
+		if info.IsDir() && info.Name() == ".git" {
+			// Found a .git directory
+			repoRoot := filepath.Dir(path)
+			gitRoots = append(gitRoots, repoRoot)
+			return filepath.SkipDir // Don't recurse into .git
+		}
+
+		// Skip common directories that shouldn't contain repositories
+		if info.IsDir() && shouldSkipDir(info.Name()) {
+			return filepath.SkipDir
+		}
+
 		return nil
+	})
+
+	return gitRoots, err
+}
+
+func shouldSkipDir(name string) bool {
+	skipDirs := []string{
+		"node_modules", "vendor", ".build", "SourcePackages",
+		"Carthage", "Pods", "target", "dist", "build",
+	}
+	for _, skip := range skipDirs {
+		if name == skip {
+			return true
+		}
+	}
+	return false
+}
+
+func runInstallHook(cmd *cobra.Command, args []string) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
 	}
 
-	fmt.Println(i18n.T("installing_hooks"))
-	hookPath := filepath.Join(repoRoot, ".git", "hooks", "post-checkout")
-	backupPath := hookPath + ".bak"
-
-	if err := hooks.Install(repoRoot); err != nil {
-		return fmt.Errorf("%s", i18n.T("hooks_failed", err))
+	// Find all git repositories under current directory
+	gitRoots, err := findAllGitRoots(cwd)
+	if err != nil {
+		return err
 	}
 
-	// Check if backup was created
-	if _, statErr := os.Stat(backupPath); statErr == nil {
-		fmt.Printf("%s\n", i18n.T("hook_backup_warning", backupPath))
+	if len(gitRoots) == 0 {
+		return fmt.Errorf("no git repositories found")
 	}
 
-	fmt.Printf("%s\n", i18n.T("hook_added"))
+	fmt.Printf(i18n.T("installing_hooks")+" (%d repositories)\n", len(gitRoots))
+
+	installed := 0
+	skipped := 0
+
+	for _, repoRoot := range gitRoots {
+		if hooks.IsInstalled(repoRoot) {
+			skipped++
+			continue
+		}
+
+		if err := hooks.Install(repoRoot); err != nil {
+			fmt.Printf("  ✗ %s: %v\n", repoRoot, err)
+			continue
+		}
+
+		installed++
+		fmt.Printf("  ✓ %s\n", repoRoot)
+	}
+
+	fmt.Printf("\nInstalled: %d, Skipped: %d (already installed)\n", installed, skipped)
 	return nil
 }
 
 func runUninstallHook(cmd *cobra.Command, args []string) error {
-	// Get repository root
-	repoRoot := "."
-	if cwd, err := os.Getwd(); err == nil {
-		repoRoot = cwd
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
 	}
 
-	// Find actual git root
-	gitDir := filepath.Join(repoRoot, ".git")
-	for {
-		if _, err := os.Stat(gitDir); err == nil {
-			break
+	// Find all git repositories under current directory
+	gitRoots, err := findAllGitRoots(cwd)
+	if err != nil {
+		return err
+	}
+
+	if len(gitRoots) == 0 {
+		return fmt.Errorf("no git repositories found")
+	}
+
+	fmt.Printf(i18n.T("removing_hooks")+" (%d repositories)\n", len(gitRoots))
+
+	removed := 0
+	skipped := 0
+
+	for _, repoRoot := range gitRoots {
+		if !hooks.IsInstalled(repoRoot) {
+			skipped++
+			continue
 		}
-		parent := filepath.Dir(repoRoot)
-		if parent == repoRoot {
-			return fmt.Errorf("not in a git repository")
+
+		if err := hooks.Uninstall(repoRoot); err != nil {
+			fmt.Printf("  ✗ %s: %v\n", repoRoot, err)
+			continue
 		}
-		repoRoot = parent
-		gitDir = filepath.Join(repoRoot, ".git")
+
+		removed++
+		fmt.Printf("  ✓ %s\n", repoRoot)
 	}
 
-	if !hooks.IsInstalled(repoRoot) {
-		fmt.Println(i18n.T("hook_not_installed"))
-		return nil
-	}
-
-	fmt.Println(i18n.T("removing_hooks"))
-
-	// Uninstall will restore backup if it exists
-	backupPath := filepath.Join(repoRoot, ".git", "hooks", "post-checkout.bak")
-	hasBackup := false
-	if _, statErr := os.Stat(backupPath); statErr == nil {
-		hasBackup = true
-	}
-
-	if err := hooks.Uninstall(repoRoot); err != nil {
-		return fmt.Errorf("%s", i18n.T("hooks_failed", err))
-	}
-
-	fmt.Printf("%s\n", i18n.T("hook_removed"))
-	if hasBackup {
-		fmt.Printf("%s\n", i18n.T("hook_restored", backupPath))
-	}
-
+	fmt.Printf("\nRemoved: %d, Skipped: %d (not installed)\n", removed, skipped)
 	return nil
 }
