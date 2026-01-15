@@ -17,7 +17,6 @@ import (
 	"github.com/yejune/git-multirepo/internal/backup"
 	"github.com/yejune/git-multirepo/internal/common"
 	"github.com/yejune/git-multirepo/internal/git"
-	"github.com/yejune/git-multirepo/internal/hooks"
 	"github.com/yejune/git-multirepo/internal/i18n"
 	"github.com/yejune/git-multirepo/internal/manifest"
 	"github.com/yejune/git-multirepo/internal/patch"
@@ -426,16 +425,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 			processKeepFiles(ctx.RepoRoot, fullPath, keepFiles, &issues)
 		} else {
 			printGreen("    ✓ No keep files - clean workspace\n")
-		}
-
-		// Install/update post-commit hook in workspace
-		if !hooks.IsWorkspaceHookInstalled(fullPath) {
-			fmt.Printf("    %s\n", i18n.T("installing_hook"))
-			if err := hooks.InstallWorkspaceHook(fullPath); err != nil {
-				fmt.Printf("    %s\n", i18n.T("hook_failed", err))
-			} else {
-				fmt.Printf("    %s\n", i18n.T("hook_installed"))
-			}
 		}
 	}
 

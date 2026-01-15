@@ -512,22 +512,22 @@ func TestStatusHookDifferentiation(t *testing.T) {
 	runClone(cloneCmd, []string{remoteRepo, "workspace4"}) // Will have no hook
 
 	t.Run("shows all 4 states correctly", func(t *testing.T) {
-		// 1. Install git-multirepo hook only in workspace1
+		// 1. Install git-multirepo hook only in workspace1 (post-commit for workspaces)
 		ws1HooksPath := filepath.Join(dir, "workspace1", ".git", "hooks")
 		os.MkdirAll(ws1HooksPath, 0755)
-		ws1HookFile := filepath.Join(ws1HooksPath, "post-checkout")
-		os.WriteFile(ws1HookFile, []byte("#!/bin/sh\n# === git-multirepo hook START ===\n# git-multirepo post-checkout hook\n# === git-multirepo hook END ===\n"), 0755)
+		ws1HookFile := filepath.Join(ws1HooksPath, "post-commit")
+		os.WriteFile(ws1HookFile, []byte("#!/bin/sh\n# === git-multirepo hook START ===\n# git-multirepo post-commit hook\n# === git-multirepo hook END ===\n"), 0755)
 
-		// 2. Install git-multirepo + other hook in workspace2
+		// 2. Install git-multirepo + other hook in workspace2 (post-commit for workspaces)
 		ws2HooksPath := filepath.Join(dir, "workspace2", ".git", "hooks")
 		os.MkdirAll(ws2HooksPath, 0755)
-		ws2HookFile := filepath.Join(ws2HooksPath, "post-checkout")
-		os.WriteFile(ws2HookFile, []byte("#!/bin/sh\n# Other hook\necho 'other'\n\n# === git-multirepo hook START ===\n# git-multirepo post-checkout hook\n# === git-multirepo hook END ===\n"), 0755)
+		ws2HookFile := filepath.Join(ws2HooksPath, "post-commit")
+		os.WriteFile(ws2HookFile, []byte("#!/bin/sh\n# Other hook\necho 'other'\n\n# === git-multirepo hook START ===\n# git-multirepo post-commit hook\n# === git-multirepo hook END ===\n"), 0755)
 
-		// 3. Install other hook only in workspace3
+		// 3. Install other hook only in workspace3 (post-commit for workspaces)
 		ws3HooksPath := filepath.Join(dir, "workspace3", ".git", "hooks")
 		os.MkdirAll(ws3HooksPath, 0755)
-		ws3HookFile := filepath.Join(ws3HooksPath, "post-checkout")
+		ws3HookFile := filepath.Join(ws3HooksPath, "post-commit")
 		os.WriteFile(ws3HookFile, []byte("#!/bin/sh\n# Other hook only\necho 'other'\n"), 0755)
 
 		// 4. workspace4 has no hook at all (already in this state)
