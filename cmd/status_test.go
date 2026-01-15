@@ -16,7 +16,7 @@ func TestGetHookStatusStringEdgeCases(t *testing.T) {
 		gitDir := filepath.Join(dir, ".git")
 		os.MkdirAll(gitDir, 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		if status != HookNone {
 			t.Errorf("Expected HookNone, got %v", status)
 		}
@@ -39,7 +39,7 @@ fi
 		hookPath := filepath.Join(hooksDir, "post-checkout")
 		os.WriteFile(hookPath, []byte(content), 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		if status != HookOurs {
 			t.Errorf("Expected HookOurs, got %v", status)
 		}
@@ -61,7 +61,7 @@ fi
 		hookPath := filepath.Join(hooksDir, "post-checkout")
 		os.WriteFile(hookPath, []byte(content), 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		if status != HookOurs {
 			t.Errorf("Expected HookOurs (no shebang), got %v", status)
 		}
@@ -82,7 +82,7 @@ sync
 		hookPath := filepath.Join(hooksDir, "post-checkout")
 		os.WriteFile(hookPath, []byte(content), 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		if status != HookMixed {
 			t.Errorf("Expected HookMixed (content before), got %v", status)
 		}
@@ -103,7 +103,7 @@ echo "custom hook after"`
 		hookPath := filepath.Join(hooksDir, "post-checkout")
 		os.WriteFile(hookPath, []byte(content), 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		if status != HookMixed {
 			t.Errorf("Expected HookMixed (content after), got %v", status)
 		}
@@ -125,7 +125,7 @@ echo "after"`
 		hookPath := filepath.Join(hooksDir, "post-checkout")
 		os.WriteFile(hookPath, []byte(content), 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		if status != HookMixed {
 			t.Errorf("Expected HookMixed (content both sides), got %v", status)
 		}
@@ -144,7 +144,7 @@ git status`
 		hookPath := filepath.Join(hooksDir, "post-checkout")
 		os.WriteFile(hookPath, []byte(content), 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		if status != HookOtherOnly {
 			t.Errorf("Expected HookOtherOnly, got %v", status)
 		}
@@ -167,7 +167,7 @@ sync
 		hookPath := filepath.Join(hooksDir, "post-checkout")
 		os.WriteFile(hookPath, []byte(content), 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		// Should be HookOurs (only shebang and whitespace around markers)
 		if status != HookOurs {
 			t.Errorf("Expected HookOurs (whitespace ignored), got %v", status)
@@ -188,7 +188,7 @@ sync
 		hookPath := filepath.Join(hooksDir, "post-checkout")
 		os.WriteFile(hookPath, []byte(content), 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		// Has START marker, so IsInstalled returns true
 		// But getHookStatus checks for both - should handle gracefully
 		// Current implementation: if startIdx >= 0 but endIdx == -1, it's malformed
@@ -211,7 +211,7 @@ sync
 		hookPath := filepath.Join(hooksDir, "post-checkout")
 		os.WriteFile(hookPath, []byte(content), 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		// No START marker, so IsInstalled returns false -> HookOtherOnly
 		if status != HookOtherOnly {
 			t.Errorf("Expected HookOtherOnly (no START marker), got %v", status)
@@ -232,7 +232,7 @@ sync
 		hookPath := filepath.Join(hooksDir, "post-checkout")
 		os.WriteFile(hookPath, []byte(content), 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		if status != HookOurs {
 			t.Errorf("Expected HookOurs (CRLF), got %v", status)
 		}
@@ -252,7 +252,7 @@ sync
 		hookPath := filepath.Join(hooksDir, "post-checkout")
 		os.WriteFile(hookPath, []byte(content), 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		if status != HookOurs {
 			t.Errorf("Expected HookOurs (mixed line endings), got %v", status)
 		}
@@ -275,7 +275,7 @@ sync
 		hookPath := filepath.Join(hooksDir, "post-checkout")
 		os.WriteFile(hookPath, []byte(content), 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		if status != HookMixed {
 			t.Errorf("Expected HookMixed (long content before), got %v", status)
 		}
@@ -297,7 +297,7 @@ echo "more special: [brackets] {braces}"`
 		hookPath := filepath.Join(hooksDir, "post-checkout")
 		os.WriteFile(hookPath, []byte(content), 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		if status != HookMixed {
 			t.Errorf("Expected HookMixed (special chars), got %v", status)
 		}
@@ -319,7 +319,7 @@ sync
 		hookPath := filepath.Join(hooksDir, "post-checkout")
 		os.WriteFile(hookPath, []byte(content), 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		// Should detect as mixed (has our marker + other content)
 		if status != HookMixed {
 			t.Errorf("Expected HookMixed (comment + real marker), got %v", status)
@@ -341,7 +341,7 @@ sync
 		hookPath := filepath.Join(hooksDir, "post-checkout")
 		os.WriteFile(hookPath, []byte(content), 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		if status != HookOurs {
 			t.Errorf("Expected HookOurs (only shebang + whitespace), got %v", status)
 		}
@@ -363,7 +363,7 @@ sync
 		hookPath := filepath.Join(hooksDir, "post-checkout")
 		os.WriteFile(hookPath, []byte(content), 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		// Comments are content, so should be HookMixed
 		if status != HookMixed {
 			t.Errorf("Expected HookMixed (comments are content), got %v", status)
@@ -383,7 +383,7 @@ sync
 		hookPath := filepath.Join(hooksDir, "post-checkout")
 		os.WriteFile(hookPath, []byte(content), 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		if status != HookOurs {
 			t.Errorf("Expected HookOurs (only markers, no shebang), got %v", status)
 		}
@@ -410,7 +410,7 @@ sync
 		hookPath := filepath.Join(hooksDir, "post-checkout")
 		os.WriteFile(hookPath, []byte(content), 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		// Empty lines are trimmed in getHookStatus logic
 		if status != HookOurs {
 			t.Errorf("Expected HookOurs (empty lines trimmed), got %v", status)
@@ -435,7 +435,7 @@ sync 2
 		hookPath := filepath.Join(hooksDir, "post-checkout")
 		os.WriteFile(hookPath, []byte(content), 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		// Has our markers + other content ("echo between")
 		if status != HookMixed {
 			t.Errorf("Expected HookMixed (duplicate markers + content), got %v", status)
@@ -452,7 +452,7 @@ sync 2
 		hookPath := filepath.Join(hooksDir, "post-checkout")
 		os.MkdirAll(hookPath, 0755)
 
-		status := getHookStatus(dir)
+		status := getHookStatus(dir, "post-checkout")
 		// IsInstalled returns false (can't read), HasHook returns true (exists)
 		// So hasOurs=false, hasAny=true -> HookOtherOnly
 		if status != HookOtherOnly {

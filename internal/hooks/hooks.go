@@ -28,6 +28,7 @@ fi
 ` + hookMarkerEnd
 
 const postCommitHook = `#!/bin/sh
+` + hookMarkerStart + `
 # git-multirepo post-commit hook for sub repositories
 # Automatically updates parent's .git.multirepos after commit
 
@@ -64,7 +65,7 @@ fi
 
 # Update parent's .git.multirepos
 cd "$PARENT_ROOT" && git-multirepo sync 2>/dev/null || true
-`
+` + hookMarkerEnd
 
 // Install installs git hooks in the repository
 // Merges with existing hooks instead of overwriting
@@ -166,6 +167,7 @@ func HasHook(repoRoot string) bool {
 }
 
 // InstallWorkspaceHook installs post-commit hook in a workspace repository
+// Merges with existing hooks instead of overwriting
 func InstallWorkspaceHook(workspacePath string) error {
 	hooksDir := filepath.Join(workspacePath, ".git", "hooks")
 
@@ -174,9 +176,33 @@ func InstallWorkspaceHook(workspacePath string) error {
 		return err
 	}
 
-	// Install post-commit hook
 	hookPath := filepath.Join(hooksDir, "post-commit")
-	return os.WriteFile(hookPath, []byte(postCommitHook), 0755)
+
+	// Read existing hook if exists
+	existingContent := ""
+	if content, err := os.ReadFile(hookPath); err == nil {
+		existingContent = string(content)
+
+		// Check if our hook is already installed
+		if strings.Contains(existingContent, hookMarkerStart) {
+			return nil // Already installed
+		}
+	}
+
+	// Merge: existing + our hook
+	var newContent string
+	if existingContent == "" {
+		newContent = postCommitHook
+	} else {
+		// Append our hook to existing
+		newContent = existingContent
+		if !strings.HasSuffix(newContent, "\n") {
+			newContent += "\n"
+		}
+		newContent += "\n" + postCommitHook
+	}
+
+	return os.WriteFile(hookPath, []byte(newContent), 0755)
 }
 
 // IsWorkspaceHookInstalled checks if the workspace hook is installed
@@ -186,5 +212,5 @@ func IsWorkspaceHookInstalled(workspacePath string) bool {
 	if err != nil {
 		return false
 	}
-	return string(content) == postCommitHook
+	return strings.Contains(string(content), hookMarkerStart)
 }

@@ -272,52 +272,57 @@ const (
 )
 
 // getHookStatus determines the hook status for a repository
-func getHookStatus(repoRoot string) HookStatus {
-	hasOurs := hooks.IsInstalled(repoRoot)
-	hasAny := hooks.HasHook(repoRoot)
-
-	if !hasAny {
+func getHookStatus(repoRoot string, hookType string) HookStatus {
+	hookPath := filepath.Join(repoRoot, ".git", "hooks", hookType)
+	content, err := os.ReadFile(hookPath)
+	if err != nil {
 		return HookNone
 	}
 
-	if hasOurs {
-		// Check if it's only ours or mixed
-		hookPath := filepath.Join(repoRoot, ".git", "hooks", "post-checkout")
-		content, err := os.ReadFile(hookPath)
-		if err != nil {
-			return HookOurs // Error reading, assume clean
-		}
+	hasOurs := strings.Contains(string(content), hooks.MarkerStart)
 
-		strContent := string(content)
-
-		// Remove our section to see if anything else remains
-		startIdx := strings.Index(strContent, hooks.MarkerStart)
-		endIdx := strings.Index(strContent, hooks.MarkerEnd)
-
-		if startIdx >= 0 && endIdx >= 0 {
-			before := strings.TrimSpace(strContent[:startIdx])
-			after := strings.TrimSpace(strContent[endIdx+len(hooks.MarkerEnd):])
-			remaining := strings.TrimSpace(before + "\n" + after)
-
-			// If only shebang or empty, it's ours only
-			if remaining == "" || remaining == "#!/bin/sh" {
-				return HookOurs
-			}
-		}
-
-		return HookMixed
+	if !hasOurs {
+		return HookOtherOnly
 	}
 
-	return HookOtherOnly
+	// Check if mixed by removing our section
+	startIdx := strings.Index(string(content), hooks.MarkerStart)
+	endIdx := strings.Index(string(content), hooks.MarkerEnd)
+
+	if startIdx == -1 || endIdx == -1 {
+		return HookNone
+	}
+
+	before := string(content[:startIdx])
+	after := string(content[endIdx+len(hooks.MarkerEnd):])
+	remaining := strings.TrimSpace(before + after)
+
+	if remaining == "" || remaining == "#!/bin/sh" {
+		return HookOurs
+	}
+
+	return HookMixed
 }
 
 // getHookStatusForRepo returns hook status string for a single repo
-func getHookStatusForRepo(repoPath string) (symbol string, description string) {
-	status := getHookStatus(repoPath)
+func getHookStatusForRepo(repoPath string, isRoot bool) (symbol string, description string) {
+	var status HookStatus
+
+	if isRoot {
+		// Check post-checkout
+		status = getHookStatus(repoPath, "post-checkout")
+	} else {
+		// Check post-commit
+		status = getHookStatus(repoPath, "post-commit")
+	}
 
 	switch status {
 	case HookOurs:
-		return "✓", "Installed (git-multirepo only)"
+		hookType := "post-checkout"
+		if !isRoot {
+			hookType = "post-commit"
+		}
+		return "✓", fmt.Sprintf("Installed (%s)", hookType)
 	case HookMixed:
 		return "⚠️ ", "Merged with other hook"
 	case HookOtherOnly:
@@ -333,9 +338,9 @@ func getHookStatusForRepo(repoPath string) (symbol string, description string) {
 func getHookSummary(ctx *common.WorkspaceContext) string {
 	ours, mixed, otherOnly, total := 0, 0, 0, 0
 
-	// Root repo
+	// Root repo (post-checkout)
 	total++
-	switch getHookStatus(ctx.RepoRoot) {
+	switch getHookStatus(ctx.RepoRoot, "post-checkout") {
 	case HookOurs:
 		ours++
 	case HookMixed:
@@ -344,7 +349,7 @@ func getHookSummary(ctx *common.WorkspaceContext) string {
 		otherOnly++
 	}
 
-	// Workspaces
+	// Workspaces (post-commit)
 	for _, ws := range ctx.Manifest.Workspaces {
 		fullPath := filepath.Join(ctx.RepoRoot, ws.Path)
 		if !git.IsRepo(fullPath) {
@@ -352,7 +357,7 @@ func getHookSummary(ctx *common.WorkspaceContext) string {
 		}
 		total++
 
-		switch getHookStatus(fullPath) {
+		switch getHookStatus(fullPath, "post-commit") {
 		case HookOurs:
 			ours++
 		case HookMixed:
@@ -365,7 +370,7 @@ func getHookSummary(ctx *common.WorkspaceContext) string {
 	installed := ours + mixed
 
 	if installed == total {
-		return fmt.Sprintf("All %d hooks installed.", total)
+		return fmt.Sprintf("All %d hooks installed (1 root, %d workspaces).", total, total-1)
 	}
 
 	msg := fmt.Sprintf("Summary: %d/%d hooks installed", installed, total)
@@ -486,7 +491,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	printCyan("Repository: . (root)\n")
 
 	// Hook status for root
-	symbol, desc := getHookStatusForRepo(ctx.RepoRoot)
+	symbol, desc := getHookStatusForRepo(ctx.RepoRoot, true)
 	fmt.Printf("  Hook: %s %s\n", symbol, desc)
 
 	// Get current branch
@@ -543,7 +548,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		printCyan("Repository: %s\n", ws.Path)
 
 		// Hook status
-		symbol, desc := getHookStatusForRepo(fullPath)
+		symbol, desc := getHookStatusForRepo(fullPath, false)
 		fmt.Printf("  Hook: %s %s\n", symbol, desc)
 
 		if !git.IsRepo(fullPath) {

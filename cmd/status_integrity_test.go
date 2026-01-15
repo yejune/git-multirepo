@@ -341,14 +341,24 @@ func TestStatusHookInfo(t *testing.T) {
 			t.Errorf("output should show hook status per repository, got: %s", output)
 		}
 
-		// Should show ✗ for not installed
+		// Should show ✗ for root (post-checkout not installed)
 		if !strings.Contains(output, "✗") {
 			t.Errorf("output should show ✗ for uninstalled hooks, got: %s", output)
 		}
 
-		// Should show summary with 0/N installed
-		if !strings.Contains(output, "Summary:") || !strings.Contains(output, "0/") {
-			t.Errorf("output should show summary with 0 hooks installed, got: %s", output)
+		// Should show ✓ for workspace (post-commit auto-installed during clone)
+		if !strings.Contains(output, "✓") {
+			t.Errorf("output should show ✓ for workspace post-commit hook, got: %s", output)
+		}
+
+		// Should show "post-commit" for workspace hook
+		if !strings.Contains(output, "post-commit") {
+			t.Errorf("output should show post-commit hook type, got: %s", output)
+		}
+
+		// Should show summary with 1/2 installed (workspace only)
+		if !strings.Contains(output, "Summary:") || !strings.Contains(output, "1/2") {
+			t.Errorf("output should show summary with 1/2 hooks installed, got: %s", output)
 		}
 
 		// Should show install suggestion
@@ -375,24 +385,31 @@ func TestStatusHookInfo(t *testing.T) {
 			t.Errorf("output should show ✓ for installed hooks, got: %s", output)
 		}
 
-		// Should show summary with all hooks installed
-		if !strings.Contains(output, "Summary:") && !strings.Contains(output, "All") {
-			t.Errorf("output should show summary with hooks installed, got: %s", output)
+		// Should show "post-checkout" for root
+		if !strings.Contains(output, "post-checkout") {
+			t.Errorf("output should show post-checkout hook type, got: %s", output)
 		}
 
-		// Check if "All N hooks installed" message is shown (no install suggestion)
-		if strings.Contains(output, "All") && strings.Contains(output, "hooks installed") {
-			// When all hooks installed, should NOT show install-hook suggestion
-			if strings.Contains(output, "git multirepo install-hook") {
-				t.Errorf("output should NOT suggest install-hook when all hooks installed, got: %s", output)
-			}
+		// Should show "post-commit" for workspace
+		if !strings.Contains(output, "post-commit") {
+			t.Errorf("output should show post-commit hook type, got: %s", output)
+		}
+
+		// Should show summary with all hooks installed (1 root, 1 workspace)
+		if !strings.Contains(output, "All 2 hooks installed (1 root, 1 workspaces)") {
+			t.Errorf("output should show 'All 2 hooks installed (1 root, 1 workspaces)', got: %s", output)
+		}
+
+		// When all hooks installed, should NOT show install-hook suggestion
+		if strings.Contains(output, "git multirepo install-hook") {
+			t.Errorf("output should NOT suggest install-hook when all hooks installed, got: %s", output)
 		}
 	})
 }
 
 // TestStatusHookInfo_WithWorkspaces tests hook status with multiple workspaces
 func TestStatusHookInfo_WithWorkspaces(t *testing.T) {
-	dir, cleanup := setupTestEnv(t)
+	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
 	remoteRepo := setupRemoteRepo(t)
@@ -402,7 +419,7 @@ func TestStatusHookInfo_WithWorkspaces(t *testing.T) {
 	runClone(cloneCmd, []string{remoteRepo, "apps/frontend"})
 	runClone(cloneCmd, []string{remoteRepo, "apps/backend"})
 
-	t.Run("status shows all repos without hooks", func(t *testing.T) {
+	t.Run("status shows root without hook, workspaces with post-commit", func(t *testing.T) {
 		output := captureOutput(func() {
 			runStatus(statusCmd, []string{})
 		})
@@ -413,24 +430,36 @@ func TestStatusHookInfo_WithWorkspaces(t *testing.T) {
 			t.Errorf("output should show hook status for all repos (expected at least 3), got %d lines with 'Hook:'", hookLines)
 		}
 
-		// Should show install suggestion
+		// Should show ✗ for root (post-checkout not installed)
+		if !strings.Contains(output, "✗") {
+			t.Errorf("output should show ✗ for root without post-checkout, got: %s", output)
+		}
+
+		// Should show ✓ for workspaces (post-commit auto-installed)
+		checkMarks := strings.Count(output, "✓")
+		if checkMarks < 2 {
+			t.Errorf("output should show ✓ for 2 workspaces with post-commit, got: %s", output)
+		}
+
+		// Should show "post-commit" for workspace hooks
+		if !strings.Contains(output, "post-commit") {
+			t.Errorf("output should show post-commit hook type for workspaces, got: %s", output)
+		}
+
+		// Should show install suggestion (root still needs post-checkout)
 		if !strings.Contains(output, "git multirepo install-hook") {
 			t.Errorf("output should suggest install-hook command, got: %s", output)
 		}
 
-		// Should show ✗ markers for uninstalled hooks
-		checkMarks := strings.Count(output, "✗")
-		if checkMarks == 0 {
-			t.Errorf("output should show ✗ for uninstalled hooks, got: %s", output)
+		// Summary should show 2/3 installed (2 workspaces)
+		if !strings.Contains(output, "2/3") {
+			t.Errorf("output should show 2/3 hooks installed, got: %s", output)
 		}
 	})
 
-	t.Run("status after partial hook installation", func(t *testing.T) {
-		// Install hook only in root
-		hooksPath := filepath.Join(dir, ".git", "hooks")
-		os.MkdirAll(hooksPath, 0755)
-		hookFile := filepath.Join(hooksPath, "post-checkout")
-		os.WriteFile(hookFile, []byte("#!/bin/sh\n# git-multirepo post-checkout hook\n# Automatically syncs subs after checkout\n# Runs from current directory (respects hierarchy)\n\nif command -v git-multirepo >/dev/null 2>&1; then\n    cd \"$(pwd)\" && git-multirepo sync\nfi\n"), 0755)
+	t.Run("status after install-hook completes all hooks", func(t *testing.T) {
+		// Install hook in root (workspaces already have post-commit)
+		runInstallHook(installHookCmd, []string{})
 
 		output := captureOutput(func() {
 			runStatus(statusCmd, []string{})
@@ -442,16 +471,28 @@ func TestStatusHookInfo_WithWorkspaces(t *testing.T) {
 			t.Errorf("output should show hook status for all repos, got %d lines with 'Hook:'", hookLines)
 		}
 
-		// Should show both ✓ and ✗ markers
+		// Should show ✓ for all repos (root post-checkout + workspace post-commit)
 		checkMarks := strings.Count(output, "✓")
-		crossMarks := strings.Count(output, "✗")
-		if checkMarks == 0 || crossMarks == 0 {
-			t.Errorf("output should show both ✓ and ✗ for partial installation, got: %s", output)
+		if checkMarks < 3 {
+			t.Errorf("output should show ✓ for all 3 repos, got %d checkmarks", checkMarks)
 		}
 
-		// Should still show install suggestion in summary
-		if !strings.Contains(output, "git multirepo install-hook") {
-			t.Errorf("output should suggest install-hook command for partial installation, got: %s", output)
+		// Should show both hook types
+		if !strings.Contains(output, "post-checkout") {
+			t.Errorf("output should show post-checkout for root, got: %s", output)
+		}
+		if !strings.Contains(output, "post-commit") {
+			t.Errorf("output should show post-commit for workspaces, got: %s", output)
+		}
+
+		// Should show "All hooks installed" with breakdown
+		if !strings.Contains(output, "All 3 hooks installed (1 root, 2 workspaces)") {
+			t.Errorf("output should show 'All 3 hooks installed (1 root, 2 workspaces)', got: %s", output)
+		}
+
+		// Should NOT show install suggestion when all hooks installed
+		if strings.Contains(output, "git multirepo install-hook") {
+			t.Errorf("output should NOT suggest install-hook when all hooks installed, got: %s", output)
 		}
 	})
 }
