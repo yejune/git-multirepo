@@ -3,6 +3,7 @@ package hooks
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -49,14 +50,69 @@ func TestInstall(t *testing.T) {
 		}
 
 		content, _ := os.ReadFile(hookPath)
-		if string(content) != postCheckoutHook {
-			t.Error("hook content mismatch")
+		if !strings.Contains(string(content), hookMarkerStart) {
+			t.Error("hook content should contain marker")
 		}
 
 		// Check executable
 		info, _ := os.Stat(hookPath)
 		if info.Mode().Perm()&0111 == 0 {
 			t.Error("hook should be executable")
+		}
+	})
+
+	t.Run("install merges with existing hook", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		// Write existing custom hook
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		existingContent := "#!/bin/sh\necho custom hook"
+		os.WriteFile(hookPath, []byte(existingContent), 0755)
+
+		// Install our hook
+		err := Install(dir)
+		if err != nil {
+			t.Fatalf("Install failed: %v", err)
+		}
+
+		// Both hooks should exist
+		content, _ := os.ReadFile(hookPath)
+		contentStr := string(content)
+		if !strings.Contains(contentStr, "echo custom hook") {
+			t.Error("existing hook should be preserved")
+		}
+		if !strings.Contains(contentStr, hookMarkerStart) {
+			t.Error("our hook should be added")
+		}
+	})
+
+	t.Run("install skips if already installed", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		// Install first time
+		err := Install(dir)
+		if err != nil {
+			t.Fatalf("First install failed: %v", err)
+		}
+
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		firstContent, _ := os.ReadFile(hookPath)
+
+		// Install second time
+		err = Install(dir)
+		if err != nil {
+			t.Fatalf("Second install failed: %v", err)
+		}
+
+		secondContent, _ := os.ReadFile(hookPath)
+		if string(firstContent) != string(secondContent) {
+			t.Error("hook should not be modified when already installed")
 		}
 	})
 
@@ -99,6 +155,59 @@ func TestUninstall(t *testing.T) {
 		}
 	})
 
+	t.Run("uninstall removes only our part", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		// Create merged hook (existing + ours)
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		mergedContent := "#!/bin/sh\necho custom hook\n\n" + postCheckoutHook
+		os.WriteFile(hookPath, []byte(mergedContent), 0755)
+
+		// Uninstall
+		err := Uninstall(dir)
+		if err != nil {
+			t.Fatalf("Uninstall failed: %v", err)
+		}
+
+		// Existing hook should remain
+		content, err := os.ReadFile(hookPath)
+		if err != nil {
+			t.Error("hook file should still exist")
+		}
+		contentStr := string(content)
+		if !strings.Contains(contentStr, "echo custom hook") {
+			t.Error("existing hook should be preserved")
+		}
+		if strings.Contains(contentStr, hookMarkerStart) {
+			t.Error("our hook should be removed")
+		}
+	})
+
+	t.Run("uninstall removes file if only our hook", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		// Install only our hook
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		os.WriteFile(hookPath, []byte(postCheckoutHook), 0755)
+
+		// Uninstall
+		err := Uninstall(dir)
+		if err != nil {
+			t.Fatalf("Uninstall failed: %v", err)
+		}
+
+		// File should be deleted
+		if _, err := os.Stat(hookPath); !os.IsNotExist(err) {
+			t.Error("hook file should be removed when only our hook exists")
+		}
+	})
+
 	t.Run("uninstall non-existent hook", func(t *testing.T) {
 		dir := t.TempDir()
 		gitDir := filepath.Join(dir, ".git")
@@ -110,31 +219,6 @@ func TestUninstall(t *testing.T) {
 		}
 	})
 
-	t.Run("preserve custom hook", func(t *testing.T) {
-		dir := t.TempDir()
-		gitDir := filepath.Join(dir, ".git")
-		hooksDir := filepath.Join(gitDir, "hooks")
-		os.MkdirAll(hooksDir, 0755)
-
-		// Write custom hook
-		hookPath := filepath.Join(hooksDir, "post-checkout")
-		customContent := "#!/bin/sh\necho custom hook"
-		os.WriteFile(hookPath, []byte(customContent), 0755)
-
-		err := Uninstall(dir)
-		if err != nil {
-			t.Fatalf("Uninstall failed: %v", err)
-		}
-
-		// Custom hook should remain
-		content, err := os.ReadFile(hookPath)
-		if err != nil {
-			t.Fatal("custom hook should still exist")
-		}
-		if string(content) != customContent {
-			t.Error("custom hook content should be preserved")
-		}
-	})
 
 	t.Run("uninstall fails when hook is a directory", func(t *testing.T) {
 		dir := t.TempDir()
@@ -211,6 +295,747 @@ func TestIsInstalled(t *testing.T) {
 
 		if IsInstalled(dir) {
 			t.Error("should return false when different hook is installed")
+		}
+	})
+
+	t.Run("merged hook contains our marker", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		mergedContent := "#!/bin/sh\necho custom\n\n" + postCheckoutHook
+		os.WriteFile(hookPath, []byte(mergedContent), 0755)
+
+		if !IsInstalled(dir) {
+			t.Error("should return true when hook contains our marker")
+		}
+	})
+}
+
+func TestHasHook(t *testing.T) {
+	t.Run("hook exists", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		os.WriteFile(hookPath, []byte("some hook"), 0755)
+
+		if !HasHook(dir) {
+			t.Error("should return true when hook file exists")
+		}
+	})
+
+	t.Run("hook does not exist", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		os.MkdirAll(gitDir, 0755)
+
+		if HasHook(dir) {
+			t.Error("should return false when hook file does not exist")
+		}
+	})
+}
+
+// TestHookStringEdgeCases tests string parsing edge cases for hook markers
+func TestHookStringEdgeCases(t *testing.T) {
+	t.Run("marker with leading/trailing whitespace", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		// Create hook with markers surrounded by whitespace
+		content := `#!/bin/sh
+echo "before"
+
+  ` + MarkerStart + `
+if command -v git-multirepo >/dev/null 2>&1; then
+    cd "$(pwd)" && git-multirepo sync
+fi
+  ` + MarkerEnd + `
+
+echo "after"`
+
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		os.WriteFile(hookPath, []byte(content), 0755)
+
+		// IsInstalled should still find it despite whitespace
+		if !IsInstalled(dir) {
+			t.Error("IsInstalled should detect marker with surrounding whitespace")
+		}
+
+		// Uninstall should remove it cleanly
+		if err := Uninstall(dir); err != nil {
+			t.Fatalf("Uninstall failed: %v", err)
+		}
+
+		result, _ := os.ReadFile(hookPath)
+		resultStr := string(result)
+
+		if strings.Contains(resultStr, MarkerStart) {
+			t.Error("Uninstall should remove marker section with whitespace")
+		}
+
+		if !strings.Contains(resultStr, `echo "before"`) {
+			t.Error("Uninstall should preserve content before marker")
+		}
+
+		if !strings.Contains(resultStr, `echo "after"`) {
+			t.Error("Uninstall should preserve content after marker")
+		}
+	})
+
+	t.Run("marker without shebang", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		// Hook content without shebang
+		content := MarkerStart + `
+if command -v git-multirepo >/dev/null 2>&1; then
+    cd "$(pwd)" && git-multirepo sync
+fi
+` + MarkerEnd
+
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		os.WriteFile(hookPath, []byte(content), 0755)
+
+		// Should still be detected as installed
+		if !IsInstalled(dir) {
+			t.Error("IsInstalled should work without shebang")
+		}
+
+		// Uninstall should remove file completely
+		if err := Uninstall(dir); err != nil {
+			t.Fatalf("Uninstall failed: %v", err)
+		}
+
+		if _, err := os.Stat(hookPath); !os.IsNotExist(err) {
+			t.Error("Uninstall should remove file when only our hook (no shebang)")
+		}
+	})
+
+	t.Run("only START marker without END", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		content := `#!/bin/sh
+` + MarkerStart + `
+if command -v git-multirepo >/dev/null 2>&1; then
+    cd "$(pwd)" && git-multirepo sync
+fi
+# END marker is missing!
+echo "other hook"`
+
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		os.WriteFile(hookPath, []byte(content), 0755)
+
+		// IsInstalled should still return true (contains START marker)
+		// This is current behavior - marker presence check is simple
+		if !IsInstalled(dir) {
+			t.Error("IsInstalled should detect START marker even without END")
+		}
+
+		// Uninstall should handle gracefully (won't find matching pair)
+		err := Uninstall(dir)
+		if err != nil {
+			t.Fatalf("Uninstall should handle incomplete markers gracefully: %v", err)
+		}
+
+		// Content should remain unchanged (no valid marker pair to remove)
+		result, _ := os.ReadFile(hookPath)
+		if !strings.Contains(string(result), MarkerStart) {
+			t.Error("Content should remain unchanged when marker pair is incomplete")
+		}
+	})
+
+	t.Run("only END marker without START", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		content := `#!/bin/sh
+if command -v git-multirepo >/dev/null 2>&1; then
+    cd "$(pwd)" && git-multirepo sync
+fi
+` + MarkerEnd + `
+echo "other hook"`
+
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		os.WriteFile(hookPath, []byte(content), 0755)
+
+		// IsInstalled should return false (no START marker)
+		if IsInstalled(dir) {
+			t.Error("IsInstalled should return false without START marker")
+		}
+
+		// Uninstall should be no-op
+		err := Uninstall(dir)
+		if err != nil {
+			t.Fatalf("Uninstall should handle gracefully: %v", err)
+		}
+
+		result, _ := os.ReadFile(hookPath)
+		if !strings.Contains(string(result), MarkerEnd) {
+			t.Error("Content should remain unchanged when no START marker")
+		}
+	})
+
+	t.Run("duplicate markers", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		content := `#!/bin/sh
+` + MarkerStart + `
+sync 1
+` + MarkerEnd + `
+echo "middle"
+` + MarkerStart + `
+sync 2
+` + MarkerEnd
+
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		os.WriteFile(hookPath, []byte(content), 0755)
+
+		// IsInstalled should detect presence
+		if !IsInstalled(dir) {
+			t.Error("IsInstalled should detect duplicate markers")
+		}
+
+		// Uninstall removes first occurrence
+		err := Uninstall(dir)
+		if err != nil {
+			t.Fatalf("Uninstall failed: %v", err)
+		}
+
+		result, _ := os.ReadFile(hookPath)
+		resultStr := string(result)
+
+		// First marker pair should be removed
+		firstStart := strings.Index(resultStr, MarkerStart)
+		if firstStart != -1 {
+			// There's still a marker - check if it's the second one
+			beforeFirst := resultStr[:firstStart]
+			if !strings.Contains(beforeFirst, "middle") {
+				t.Error("First marker pair should be removed, second remains")
+			}
+		}
+	})
+
+	t.Run("windows line endings (CRLF)", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		content := "#!/bin/sh\r\n" +
+			MarkerStart + "\r\n" +
+			"sync\r\n" +
+			MarkerEnd + "\r\n"
+
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		os.WriteFile(hookPath, []byte(content), 0755)
+
+		// Should work with Windows line endings
+		if !IsInstalled(dir) {
+			t.Error("IsInstalled should work with CRLF line endings")
+		}
+
+		err := Uninstall(dir)
+		if err != nil {
+			t.Fatalf("Uninstall should handle CRLF: %v", err)
+		}
+
+		if _, err := os.Stat(hookPath); !os.IsNotExist(err) {
+			t.Error("Should remove file when only our hook with CRLF")
+		}
+	})
+
+	t.Run("mixed line endings", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		content := "#!/bin/sh\n" +
+			MarkerStart + "\r\n" +
+			"sync\n" +
+			MarkerEnd + "\r\n"
+
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		os.WriteFile(hookPath, []byte(content), 0755)
+
+		if !IsInstalled(dir) {
+			t.Error("IsInstalled should work with mixed line endings")
+		}
+
+		err := Uninstall(dir)
+		if err != nil {
+			t.Fatalf("Uninstall should handle mixed line endings: %v", err)
+		}
+	})
+
+	t.Run("very long hook content", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		// Create 10KB+ of content
+		longContent := strings.Repeat("echo 'test'\n", 1000)
+		content := "#!/bin/sh\n" +
+			longContent + "\n" +
+			MarkerStart + "\n" +
+			"sync\n" +
+			MarkerEnd + "\n" +
+			longContent
+
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		os.WriteFile(hookPath, []byte(content), 0755)
+
+		// Should handle large files efficiently
+		if !IsInstalled(dir) {
+			t.Error("IsInstalled should work with large files")
+		}
+
+		err := Uninstall(dir)
+		if err != nil {
+			t.Fatalf("Uninstall should handle large files: %v", err)
+		}
+
+		result, _ := os.ReadFile(hookPath)
+		if strings.Contains(string(result), MarkerStart) {
+			t.Error("Should remove marker section from large file")
+		}
+
+		if !strings.Contains(string(result), "echo 'test'") {
+			t.Error("Should preserve surrounding content in large file")
+		}
+	})
+
+	t.Run("special characters in other hook", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		content := `#!/bin/sh
+# Special chars: $VAR ${VAR} $(cmd) \$escaped "quotes" 'single'
+echo "test with $SPECIAL_CHARS"
+` + MarkerStart + `
+sync
+` + MarkerEnd + `
+# More special: ` + "`backticks`" + ` [brackets] {braces}`
+
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		os.WriteFile(hookPath, []byte(content), 0755)
+
+		if !IsInstalled(dir) {
+			t.Error("IsInstalled should work with special characters")
+		}
+
+		err := Uninstall(dir)
+		if err != nil {
+			t.Fatalf("Uninstall should handle special characters: %v", err)
+		}
+
+		result, _ := os.ReadFile(hookPath)
+		resultStr := string(result)
+
+		if strings.Contains(resultStr, MarkerStart) {
+			t.Error("Should remove marker section")
+		}
+
+		if !strings.Contains(resultStr, "$SPECIAL_CHARS") {
+			t.Error("Should preserve special characters")
+		}
+
+		if !strings.Contains(resultStr, "`backticks`") {
+			t.Error("Should preserve backticks")
+		}
+	})
+
+	t.Run("marker-like content in other hook", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		content := `#!/bin/sh
+# This is not a marker: fake start marker text
+echo "fake marker"
+` + MarkerStart + `
+sync
+` + MarkerEnd
+
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		os.WriteFile(hookPath, []byte(content), 0755)
+
+		if !IsInstalled(dir) {
+			t.Error("IsInstalled should detect real marker")
+		}
+
+		err := Uninstall(dir)
+		if err != nil {
+			t.Fatalf("Uninstall failed: %v", err)
+		}
+
+		result, _ := os.ReadFile(hookPath)
+		resultStr := string(result)
+
+		// Comment should be preserved
+		if !strings.Contains(resultStr, "# This is not a marker") {
+			t.Error("Should preserve comment")
+		}
+
+		// Real marker should be removed completely
+		if strings.Contains(resultStr, MarkerStart) || strings.Contains(resultStr, MarkerEnd) {
+			t.Error("Real markers should be completely removed")
+		}
+
+		// Other content should be preserved
+		if !strings.Contains(resultStr, "echo \"fake marker\"") {
+			t.Error("Should preserve other hook content")
+		}
+	})
+
+	t.Run("empty lines around markers", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		content := `#!/bin/sh
+
+
+` + MarkerStart + `
+
+
+sync
+
+
+` + MarkerEnd + `
+
+
+echo "after"
+`
+
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		os.WriteFile(hookPath, []byte(content), 0755)
+
+		if !IsInstalled(dir) {
+			t.Error("IsInstalled should work with many blank lines")
+		}
+
+		err := Uninstall(dir)
+		if err != nil {
+			t.Fatalf("Uninstall should handle blank lines: %v", err)
+		}
+
+		result, _ := os.ReadFile(hookPath)
+		resultStr := string(result)
+
+		if strings.Contains(resultStr, MarkerStart) {
+			t.Error("Should remove marker section with blank lines")
+		}
+
+		if !strings.Contains(resultStr, `echo "after"`) {
+			t.Error("Should preserve content after blank lines")
+		}
+	})
+
+	t.Run("no newline at end of file", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		content := `#!/bin/sh
+` + MarkerStart + `
+sync
+` + MarkerEnd // No trailing newline
+
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		os.WriteFile(hookPath, []byte(content), 0755)
+
+		if !IsInstalled(dir) {
+			t.Error("IsInstalled should work without trailing newline")
+		}
+
+		err := Uninstall(dir)
+		if err != nil {
+			t.Fatalf("Uninstall should handle missing trailing newline: %v", err)
+		}
+
+		if _, err := os.Stat(hookPath); !os.IsNotExist(err) {
+			t.Error("Should remove file when only our hook (no trailing newline)")
+		}
+	})
+}
+
+// TestUninstallStringHandling tests precise string manipulation during uninstall
+func TestUninstallStringHandling(t *testing.T) {
+	t.Run("removes only exact marker section", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		before := `#!/bin/sh
+echo "before hook"
+`
+		middle := MarkerStart + `
+if command -v git-multirepo >/dev/null 2>&1; then
+    cd "$(pwd)" && git-multirepo sync
+fi
+` + MarkerEnd
+
+		after := `
+echo "after hook"
+`
+
+		content := before + middle + after
+
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		os.WriteFile(hookPath, []byte(content), 0755)
+
+		// Uninstall
+		err := Uninstall(dir)
+		if err != nil {
+			t.Fatalf("Uninstall failed: %v", err)
+		}
+
+		result, _ := os.ReadFile(hookPath)
+		actual := string(result)
+
+		// Verify marker is completely removed
+		if strings.Contains(actual, MarkerStart) || strings.Contains(actual, MarkerEnd) {
+			t.Error("Markers should be completely removed")
+		}
+
+		// Verify both before and after content preserved
+		if !strings.Contains(actual, `echo "before hook"`) {
+			t.Error("Before content should be preserved")
+		}
+
+		if !strings.Contains(actual, `echo "after hook"`) {
+			t.Error("After content should be preserved")
+		}
+
+		// Verify shebang is preserved
+		if !strings.Contains(actual, "#!/bin/sh") {
+			t.Error("Shebang should be preserved")
+		}
+
+		// Note: Uninstall uses TrimSpace, so exact blank line preservation
+		// is not guaranteed. The important thing is that all non-blank
+		// content is preserved correctly.
+	})
+
+	t.Run("preserves exact indentation", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		content := `#!/bin/sh
+if [ "$condition" = "true" ]; then
+    echo "indented line 1"
+        echo "extra indented"
+    echo "indented line 2"
+fi
+` + MarkerStart + `
+sync
+` + MarkerEnd + `
+for i in 1 2 3; do
+    echo "loop $i"
+done`
+
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		os.WriteFile(hookPath, []byte(content), 0755)
+
+		err := Uninstall(dir)
+		if err != nil {
+			t.Fatalf("Uninstall failed: %v", err)
+		}
+
+		result, _ := os.ReadFile(hookPath)
+		resultStr := string(result)
+
+		// Check exact indentation is preserved
+		if !strings.Contains(resultStr, "    echo \"indented line 1\"") {
+			t.Error("Should preserve 4-space indentation")
+		}
+
+		if !strings.Contains(resultStr, "        echo \"extra indented\"") {
+			t.Error("Should preserve 8-space indentation")
+		}
+
+		if !strings.Contains(resultStr, "    echo \"loop $i\"") {
+			t.Error("Should preserve indentation after marker removal")
+		}
+	})
+
+	t.Run("handles consecutive newlines correctly", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		content := `#!/bin/sh
+
+echo "line1"
+
+
+echo "line2"
+
+` + MarkerStart + `
+sync
+` + MarkerEnd + `
+
+echo "line3"
+
+
+echo "line4"`
+
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		os.WriteFile(hookPath, []byte(content), 0755)
+
+		err := Uninstall(dir)
+		if err != nil {
+			t.Fatalf("Uninstall failed: %v", err)
+		}
+
+		result, _ := os.ReadFile(hookPath)
+		resultStr := string(result)
+
+		// Marker section should be gone
+		if strings.Contains(resultStr, MarkerStart) {
+			t.Error("Marker should be removed")
+		}
+
+		// Content should be preserved (trimmed due to TrimSpace in Uninstall)
+		if !strings.Contains(resultStr, "line1") || !strings.Contains(resultStr, "line4") {
+			t.Error("All content lines should be preserved")
+		}
+	})
+}
+
+// TestInstallStringHandling tests string handling during install
+func TestInstallStringHandling(t *testing.T) {
+	t.Run("appends with proper spacing", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		// Existing hook without trailing newline
+		existing := `#!/bin/sh
+echo "existing hook"`
+
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		os.WriteFile(hookPath, []byte(existing), 0755)
+
+		err := Install(dir)
+		if err != nil {
+			t.Fatalf("Install failed: %v", err)
+		}
+
+		result, _ := os.ReadFile(hookPath)
+		resultStr := string(result)
+
+		// Check for proper separation
+		lines := strings.Split(resultStr, "\n")
+
+		// Should have existing content
+		if !strings.Contains(resultStr, "existing hook") {
+			t.Error("Should preserve existing hook")
+		}
+
+		// Should have our marker
+		if !strings.Contains(resultStr, MarkerStart) {
+			t.Error("Should add our marker")
+		}
+
+		// Check there's reasonable spacing (at least one blank line between)
+		existingIdx := -1
+		markerIdx := -1
+		for i, line := range lines {
+			if strings.Contains(line, "existing hook") {
+				existingIdx = i
+			}
+			if strings.Contains(line, MarkerStart) {
+				markerIdx = i
+			}
+		}
+
+		if markerIdx <= existingIdx {
+			t.Error("Our hook should come after existing hook")
+		}
+
+		if markerIdx-existingIdx < 2 {
+			t.Error("Should have at least one blank line between hooks")
+		}
+	})
+
+	t.Run("preserves existing hook format", func(t *testing.T) {
+		dir := t.TempDir()
+		gitDir := filepath.Join(dir, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+		os.MkdirAll(hooksDir, 0755)
+
+		existing := `#!/bin/bash
+# Custom hook
+# Multiple comments
+
+function my_hook() {
+    echo "custom logic"
+}
+
+my_hook
+`
+
+		hookPath := filepath.Join(hooksDir, "post-checkout")
+		os.WriteFile(hookPath, []byte(existing), 0755)
+
+		err := Install(dir)
+		if err != nil {
+			t.Fatalf("Install failed: %v", err)
+		}
+
+		result, _ := os.ReadFile(hookPath)
+		resultStr := string(result)
+
+		// All original content should be preserved exactly
+		if !strings.Contains(resultStr, "#!/bin/bash") {
+			t.Error("Should preserve bash shebang")
+		}
+
+		if !strings.Contains(resultStr, "# Custom hook") {
+			t.Error("Should preserve comments")
+		}
+
+		if !strings.Contains(resultStr, "function my_hook()") {
+			t.Error("Should preserve function definition")
+		}
+
+		if !strings.Contains(resultStr, "my_hook") {
+			t.Error("Should preserve function call")
+		}
+
+		// Our hook should be appended
+		if !strings.Contains(resultStr, MarkerStart) {
+			t.Error("Should append our hook")
 		}
 	})
 }

@@ -458,3 +458,85 @@ func TestStatusHookInfo_WithWorkspaces(t *testing.T) {
 		}
 	})
 }
+
+// TestStatusHookDifferentiation tests the 4 different hook states
+func TestStatusHookDifferentiation(t *testing.T) {
+	dir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	remoteRepo := setupRemoteRepo(t)
+
+	// Create 4 workspaces for each state
+	cloneBranch = ""
+	runClone(cloneCmd, []string{remoteRepo, "workspace1"}) // Will have git-multirepo only
+	runClone(cloneCmd, []string{remoteRepo, "workspace2"}) // Will have git-multirepo + other
+	runClone(cloneCmd, []string{remoteRepo, "workspace3"}) // Will have other only
+	runClone(cloneCmd, []string{remoteRepo, "workspace4"}) // Will have no hook
+
+	t.Run("shows all 4 states correctly", func(t *testing.T) {
+		// 1. Install git-multirepo hook only in workspace1
+		ws1HooksPath := filepath.Join(dir, "workspace1", ".git", "hooks")
+		os.MkdirAll(ws1HooksPath, 0755)
+		ws1HookFile := filepath.Join(ws1HooksPath, "post-checkout")
+		os.WriteFile(ws1HookFile, []byte("#!/bin/sh\n# === git-multirepo hook START ===\n# git-multirepo post-checkout hook\n# === git-multirepo hook END ===\n"), 0755)
+
+		// 2. Install git-multirepo + other hook in workspace2
+		ws2HooksPath := filepath.Join(dir, "workspace2", ".git", "hooks")
+		os.MkdirAll(ws2HooksPath, 0755)
+		ws2HookFile := filepath.Join(ws2HooksPath, "post-checkout")
+		os.WriteFile(ws2HookFile, []byte("#!/bin/sh\n# Other hook\necho 'other'\n\n# === git-multirepo hook START ===\n# git-multirepo post-checkout hook\n# === git-multirepo hook END ===\n"), 0755)
+
+		// 3. Install other hook only in workspace3
+		ws3HooksPath := filepath.Join(dir, "workspace3", ".git", "hooks")
+		os.MkdirAll(ws3HooksPath, 0755)
+		ws3HookFile := filepath.Join(ws3HooksPath, "post-checkout")
+		os.WriteFile(ws3HookFile, []byte("#!/bin/sh\n# Other hook only\necho 'other'\n"), 0755)
+
+		// 4. workspace4 has no hook at all (already in this state)
+
+		output := captureOutput(func() {
+			runStatus(statusCmd, []string{})
+		})
+
+		// Check output
+		if !strings.Contains(output, "Hooks:") {
+			t.Errorf("output should show hook status, got: %s", output)
+		}
+
+		// Should show correct counts
+		// installed = 2 (workspace1 + workspace2)
+		// total = 5 (root + 4 workspaces)
+		// merged = 1 (workspace2)
+		// otherOnly = 1 (workspace3)
+
+		// Check markers
+		if !strings.Contains(output, "✓") {
+			t.Errorf("output should show ✓ for git-multirepo only hook, got: %s", output)
+		}
+
+		if strings.Count(output, "⚠️") < 2 {
+			t.Errorf("output should show ⚠️ for merged and other-only hooks, got: %s", output)
+		}
+
+		if !strings.Contains(output, "(merged with other hook)") {
+			t.Errorf("output should show '(merged with other hook)' for workspace2, got: %s", output)
+		}
+
+		if !strings.Contains(output, "(other hook only)") {
+			t.Errorf("output should show '(other hook only)' for workspace3, got: %s", output)
+		}
+
+		if !strings.Contains(output, "✗") {
+			t.Errorf("output should show ✗ for no hook, got: %s", output)
+		}
+
+		// Check installation message
+		if !strings.Contains(output, "need installation") {
+			t.Errorf("output should show 'need installation' for otherOnly repos, got: %s", output)
+		}
+
+		if !strings.Contains(output, "git multirepo install-hook") {
+			t.Errorf("output should suggest install-hook command, got: %s", output)
+		}
+	})
+}

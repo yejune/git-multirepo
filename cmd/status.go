@@ -261,17 +261,67 @@ func findRemoteURLMismatches(ctx *common.WorkspaceContext) []IntegrityIssue {
 	return issues
 }
 
+// HookStatus represents hook installation status
+type HookStatus int
+
+const (
+	HookNone HookStatus = iota     // ✗ No hook at all
+	HookOtherOnly                  // ⚠️ Other hook only (git-multirepo not installed)
+	HookOurs                       // ✓ git-multirepo only (clean)
+	HookMixed                      // ⚠️ git-multirepo + other hook (merged)
+)
+
+// getHookStatus determines the hook status for a repository
+func getHookStatus(repoRoot string) HookStatus {
+	hasOurs := hooks.IsInstalled(repoRoot)
+	hasAny := hooks.HasHook(repoRoot)
+
+	if !hasAny {
+		return HookNone
+	}
+
+	if hasOurs {
+		// Check if it's only ours or mixed
+		hookPath := filepath.Join(repoRoot, ".git", "hooks", "post-checkout")
+		content, err := os.ReadFile(hookPath)
+		if err != nil {
+			return HookOurs // Error reading, assume clean
+		}
+
+		strContent := string(content)
+
+		// Remove our section to see if anything else remains
+		startIdx := strings.Index(strContent, hooks.MarkerStart)
+		endIdx := strings.Index(strContent, hooks.MarkerEnd)
+
+		if startIdx >= 0 && endIdx >= 0 {
+			before := strings.TrimSpace(strContent[:startIdx])
+			after := strings.TrimSpace(strContent[endIdx+len(hooks.MarkerEnd):])
+			remaining := strings.TrimSpace(before + "\n" + after)
+
+			// If only shebang or empty, it's ours only
+			if remaining == "" || remaining == "#!/bin/sh" {
+				return HookOurs
+			}
+		}
+
+		return HookMixed
+	}
+
+	return HookOtherOnly
+}
+
 // checkHookStatus checks hook installation status for all workspaces
-func checkHookStatus(ctx *common.WorkspaceContext) (installed int, total int, details []string) {
+func checkHookStatus(ctx *common.WorkspaceContext) (ours int, mixed int, otherOnly int, total int, details []string) {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return 0, 0, nil
+		return 0, 0, 0, 0, nil
 	}
 
 	// Find all git repositories under current directory
 	gitRoots, err := findAllGitRoots(cwd)
 	if err != nil {
-		return 0, 0, nil
+		return 0, 0, 0, 0, nil
 	}
 	total = len(gitRoots)
 
@@ -283,15 +333,24 @@ func checkHookStatus(ctx *common.WorkspaceContext) (installed int, total int, de
 			relPath = repoRoot
 		}
 
-		if hooks.IsInstalled(repoRoot) {
-			installed++
+		status := getHookStatus(repoRoot)
+
+		switch status {
+		case HookOurs:
+			ours++
 			details = append(details, fmt.Sprintf("  ✓ %s", relPath))
-		} else {
+		case HookMixed:
+			mixed++
+			details = append(details, fmt.Sprintf("  ⚠️  %s (merged with other hook)", relPath))
+		case HookOtherOnly:
+			otherOnly++
+			details = append(details, fmt.Sprintf("  ⚠️  %s (other hook only)", relPath))
+		case HookNone:
 			details = append(details, fmt.Sprintf("  ✗ %s", relPath))
 		}
 	}
 
-	return installed, total, details
+	return ours, mixed, otherOnly, total, details
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
@@ -317,16 +376,29 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	printGray("%s\n\n", strings.Repeat("─", 80))
 
 	// Check hook status
-	installed, total, details := checkHookStatus(ctx)
+	ours, mixed, otherOnly, total, details := checkHookStatus(ctx)
+	installed := ours + mixed
 	if total > 0 {
-		fmt.Printf("Hooks: %d/%d installed\n", installed, total)
+		fmt.Printf("Hooks: %d/%d installed", installed, total)
+		if mixed > 0 {
+			fmt.Printf(" (%d merged)", mixed)
+		}
+		if otherOnly > 0 {
+			fmt.Printf(", %d need installation", otherOnly)
+		}
+		fmt.Println()
+
 		for _, detail := range details {
 			fmt.Println(detail)
 		}
 
 		if installed < total {
 			fmt.Println()
-			printYellow("Run 'git multirepo install-hook' to install hooks on all workspaces\n")
+			if otherOnly > 0 {
+				printYellow("Run 'git multirepo install-hook' to install/merge hooks\n")
+			} else {
+				printYellow("Run 'git multirepo install-hook' to install hooks\n")
+			}
 		}
 
 		fmt.Println()
