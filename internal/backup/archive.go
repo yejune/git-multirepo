@@ -11,7 +11,9 @@ import (
 )
 
 // ArchiveOldBackups archives previous month backups to tar.gz and removes originals
-// Archives are saved as: archived/YYYY-MM-{modified|patched}.tar.gz
+// Archives structure:
+//   - archived/{modified|patched}/workspace/YYYY-MM-{branch}.tar.gz
+//   - archived/{modified|patched}/multirepo/{workspace}/YYYY-MM-{branch}.tar.gz
 // Only previous months are archived, current month is preserved
 func ArchiveOldBackups(backupDir string) error {
 	now := time.Now()
@@ -163,7 +165,7 @@ func archiveWorkspaceBackups(workspaceDir, backupDir, backupType, currentYear, c
 					continue
 				}
 
-				// Create archive name: {year}-{month}-{branch}-{type}.tar.gz
+				// Create archive name: {year}-{month}-{branch}.tar.gz
 				// Replace / in branch name with _
 				safeBranch := filepath.ToSlash(branch)
 				safeBranch = filepath.Base(safeBranch) // Use only the last part if it's a path
@@ -172,8 +174,8 @@ func archiveWorkspaceBackups(workspaceDir, backupDir, backupType, currentYear, c
 				}
 				safeBranch = sanitizePath(safeBranch)
 
-				archiveName := fmt.Sprintf("%s-%s-%s-%s.tar.gz", year, month, safeBranch, backupType)
-				archivePath := filepath.Join(backupDir, "archived", archiveName)
+				archiveName := fmt.Sprintf("%s-%s-%s.tar.gz", year, month, safeBranch)
+				archivePath := filepath.Join(backupDir, "archived", backupType, "workspace", archiveName)
 
 				// Check if archive already exists
 				if _, err := os.Stat(archivePath); err == nil {
@@ -181,10 +183,10 @@ func archiveWorkspaceBackups(workspaceDir, backupDir, backupType, currentYear, c
 					continue
 				}
 
-				// Create archived directory if not exists
-				archivedDir := filepath.Join(backupDir, "archived")
-				if err := os.MkdirAll(archivedDir, 0755); err != nil {
-					return 0, 0, fmt.Errorf("failed to create archived directory: %w", err)
+				// Create archived directory structure if not exists
+				archiveDir := filepath.Dir(archivePath)
+				if err := os.MkdirAll(archiveDir, 0755); err != nil {
+					return 0, 0, fmt.Errorf("failed to create archive directory: %w", err)
 				}
 
 				// Create tar.gz archive from monthPath
@@ -315,13 +317,13 @@ func archiveMultirepoBackups(multirepoDir, backupDir, backupType, currentYear, c
 						continue
 					}
 
-					// Create archive name: {year}-{month}-{workspace}-{branch}-{type}.tar.gz
+					// Create archive name: {year}-{month}-{branch}.tar.gz
 					// Replace / in workspace and branch names with _
 					safeWorkspace := sanitizePath(workspace)
 					safeBranch := sanitizePath(branch)
 
-					archiveName := fmt.Sprintf("%s-%s-%s-%s-%s.tar.gz", year, month, safeWorkspace, safeBranch, backupType)
-					archivePath := filepath.Join(backupDir, "archived", archiveName)
+					archiveName := fmt.Sprintf("%s-%s-%s.tar.gz", year, month, safeBranch)
+					archivePath := filepath.Join(backupDir, "archived", backupType, "multirepo", safeWorkspace, archiveName)
 
 					// Check if archive already exists
 					if _, err := os.Stat(archivePath); err == nil {
@@ -329,10 +331,10 @@ func archiveMultirepoBackups(multirepoDir, backupDir, backupType, currentYear, c
 						continue
 					}
 
-					// Create archived directory if not exists
-					archivedDir := filepath.Join(backupDir, "archived")
-					if err := os.MkdirAll(archivedDir, 0755); err != nil {
-						return 0, 0, fmt.Errorf("failed to create archived directory: %w", err)
+					// Create archived directory structure if not exists
+					archiveDir := filepath.Dir(archivePath)
+					if err := os.MkdirAll(archiveDir, 0755); err != nil {
+						return 0, 0, fmt.Errorf("failed to create archive directory: %w", err)
 					}
 
 					// Create tar.gz archive from monthPath
