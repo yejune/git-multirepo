@@ -549,8 +549,18 @@ func TestCreateFileBackup_WorkspaceMultirepoSeparation(t *testing.T) {
 		t.Errorf("CreateFileBackup() root backup error = %v", err)
 	}
 
+	// Create workspace directory and file for workspace backup test
+	workspaceDir := filepath.Join(repoRoot, "apps/api.log")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("failed to create workspace dir: %v", err)
+	}
+	workspaceFile := filepath.Join(workspaceDir, "test.txt")
+	if err := os.WriteFile(workspaceFile, []byte("workspace content"), 0644); err != nil {
+		t.Fatalf("failed to create workspace file: %v", err)
+	}
+
 	// Workspace backup
-	err = CreateFileBackup(sourceFile, backupDir, repoRoot, "apps/api.log", "main")
+	err = CreateFileBackup(workspaceFile, backupDir, repoRoot, "apps/api.log", "main")
 	if err != nil {
 		t.Errorf("CreateFileBackup() workspace backup error = %v", err)
 	}
@@ -576,7 +586,12 @@ func TestCreateFileBackup_BranchPathWithSlash(t *testing.T) {
 	backupDir := filepath.Join(tmpDir, "backup")
 	repoRoot := tmpDir
 
-	sourceFile := filepath.Join(repoRoot, "test.txt")
+	// Create workspace directory and file
+	workspaceDir := filepath.Join(repoRoot, "apps/api.log")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("failed to create workspace dir: %v", err)
+	}
+	sourceFile := filepath.Join(workspaceDir, "test.txt")
 	if err := os.WriteFile(sourceFile, []byte("content"), 0644); err != nil {
 		t.Fatalf("failed to create source file: %v", err)
 	}

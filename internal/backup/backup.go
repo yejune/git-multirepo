@@ -34,6 +34,11 @@ func CreatePatchBackup(patchPath, backupDir, workspace, branch string) error {
 		relPath = patchPath[idx+len(".multirepos-patches/"):]
 	}
 
+	// For workspace patches, remove workspace prefix from relPath
+	if workspace != "" && strings.HasPrefix(relPath, workspace+"/") {
+		relPath = strings.TrimPrefix(relPath, workspace+"/")
+	}
+
 	// Determine backup type directory
 	var typeDir string
 	if workspace == "" {
@@ -89,12 +94,20 @@ func CreateFileBackup(filePath, backupDir, repoRoot, workspace, branch string) e
 	now := time.Now()
 	timestamp := now.Format("20060102_150405")
 
-	// Extract relative path from repoRoot (handle both absolute and relative paths)
+	// Extract relative path from appropriate base directory
+	var baseDir string
+	if workspace == "" {
+		// Root repository: use repoRoot as base
+		baseDir = repoRoot
+	} else {
+		// Workspace repository: use workspace directory as base
+		baseDir = filepath.Join(repoRoot, workspace)
+	}
+
 	relPath := filePath
-	// If it's an absolute path, make it relative to repoRoot
 	if filepath.IsAbs(filePath) {
 		var err error
-		relPath, err = filepath.Rel(repoRoot, filePath)
+		relPath, err = filepath.Rel(baseDir, filePath)
 		if err != nil {
 			// Fallback: use the original path if we can't make it relative
 			relPath = filePath
