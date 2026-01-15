@@ -9,9 +9,10 @@ import (
 const postCheckoutHook = `#!/bin/sh
 # git-multirepo post-checkout hook
 # Automatically syncs subs after checkout
+# Runs from current directory (respects hierarchy)
 
 if command -v git-multirepo >/dev/null 2>&1; then
-    git-multirepo sync
+    cd "$(pwd)" && git-multirepo sync
 fi
 `
 
@@ -85,8 +86,10 @@ func Install(repoRoot string) error {
 }
 
 // Uninstall removes git hooks from the repository
+// If a backup exists (.bak file), it will be restored
 func Uninstall(repoRoot string) error {
 	hookPath := filepath.Join(repoRoot, ".git", "hooks", "post-checkout")
+	backupPath := hookPath + ".bak"
 
 	// Read current hook
 	content, err := os.ReadFile(hookPath)
@@ -98,11 +101,22 @@ func Uninstall(repoRoot string) error {
 	}
 
 	// Only remove if it's our hook
-	if string(content) == postCheckoutHook {
-		return os.Remove(hookPath)
+	if string(content) != postCheckoutHook {
+		return nil
 	}
 
-	return nil
+	// Check if backup exists
+	if backupContent, err := os.ReadFile(backupPath); err == nil {
+		// Restore backup
+		if err := os.WriteFile(hookPath, backupContent, 0755); err != nil {
+			return err
+		}
+		// Remove backup file
+		return os.Remove(backupPath)
+	}
+
+	// No backup, just remove the hook
+	return os.Remove(hookPath)
 }
 
 // IsInstalled checks if the hook is installed

@@ -109,7 +109,7 @@ func runClone(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("✓ Added repository: %s\n", path)
 	fmt.Printf("  Repository: %s\n", repo)
-	fmt.Printf("\n💡 Tip: %s\n", i18n.T("auto_sync_howto"))
+	fmt.Printf("\n💡 Tip: %s\n", i18n.T("hook_howto"))
 
 	return nil
 }

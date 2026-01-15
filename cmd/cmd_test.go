@@ -136,37 +136,17 @@ func TestRunSync(t *testing.T) {
 	}
 	manifest.Save(dir, m)
 
-	t.Run("sync applies configuration without hooks by default", func(t *testing.T) {
-		// Test default behavior (no hook installation)
-		syncAutoSync = false
+	t.Run("sync applies configuration", func(t *testing.T) {
+		// Test default behavior
 		err := runSync(syncCmd, []string{})
 		if err != nil {
 			t.Fatalf("runSync failed: %v", err)
-		}
-
-		// Check hooks NOT installed by default
-		if hooks.IsInstalled(dir) {
-			t.Error("hooks should not be installed by default")
 		}
 
 		// Check .gitignore updated
 		gitignoreContent, _ := os.ReadFile(filepath.Join(dir, ".gitignore"))
 		if !strings.Contains(string(gitignoreContent), "*.log") {
 			t.Error(".gitignore should contain ignore pattern")
-		}
-	})
-
-	t.Run("sync with --auto-sync flag installs hooks", func(t *testing.T) {
-		// Test with --auto-sync flag
-		syncAutoSync = true
-		err := runSync(syncCmd, []string{})
-		if err != nil {
-			t.Fatalf("runSync failed: %v", err)
-		}
-
-		// Check hooks installed with flag
-		if !hooks.IsInstalled(dir) {
-			t.Error("hooks should be installed with --auto-sync flag")
 		}
 	})
 
@@ -178,6 +158,52 @@ func TestRunSync(t *testing.T) {
 		err := runSync(syncCmd, []string{})
 		if err != nil {
 			t.Fatalf("runSync should succeed with empty manifest: %v", err)
+		}
+	})
+}
+
+func TestInstallUninstallHook(t *testing.T) {
+	dir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	t.Run("install-hook installs git hook", func(t *testing.T) {
+		err := runInstallHook(installHookCmd, []string{})
+		if err != nil {
+			t.Fatalf("runInstallHook failed: %v", err)
+		}
+
+		// Check hook installed
+		if !hooks.IsInstalled(dir) {
+			t.Error("hook should be installed")
+		}
+	})
+
+	t.Run("install-hook on already installed hook", func(t *testing.T) {
+		// Hook is already installed from previous test
+		err := runInstallHook(installHookCmd, []string{})
+		if err != nil {
+			t.Fatalf("runInstallHook should not error on already installed hook: %v", err)
+		}
+	})
+
+	t.Run("uninstall-hook removes git hook", func(t *testing.T) {
+		// Hook is installed from previous tests
+		err := runUninstallHook(uninstallHookCmd, []string{})
+		if err != nil {
+			t.Fatalf("runUninstallHook failed: %v", err)
+		}
+
+		// Check hook removed
+		if hooks.IsInstalled(dir) {
+			t.Error("hook should be removed")
+		}
+	})
+
+	t.Run("uninstall-hook on not installed hook", func(t *testing.T) {
+		// Hook is already removed from previous test
+		err := runUninstallHook(uninstallHookCmd, []string{})
+		if err != nil {
+			t.Fatalf("runUninstallHook should not error on not installed hook: %v", err)
 		}
 	})
 }

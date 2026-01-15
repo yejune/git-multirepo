@@ -25,8 +25,7 @@ import (
 )
 
 var (
-	syncVerbose  bool
-	syncAutoSync bool
+	syncVerbose bool
 
 	// Color formatters for sync output
 	colorCyan   = color.New(color.FgCyan, color.Bold)
@@ -256,7 +255,6 @@ Examples:
 
 func init() {
 	syncCmd.Flags().BoolVarP(&syncVerbose, "verbose", "v", false, "Show detailed keep file list")
-	syncCmd.Flags().BoolVar(&syncAutoSync, "auto-sync", false, i18n.T("auto_sync_flag_help"))
 	rootCmd.AddCommand(syncCmd)
 }
 
@@ -269,26 +267,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	fmt.Println(i18n.T("syncing"))
 
-	// 1. Install hooks only if --auto-sync flag is set
-	if syncAutoSync {
-		if !hooks.IsInstalled(ctx.RepoRoot) {
-			fmt.Println(i18n.T("installing_hooks"))
-			hookPath := filepath.Join(ctx.RepoRoot, ".git", "hooks", "post-checkout")
-			backupPath := hookPath + ".bak"
-
-			if err := hooks.Install(ctx.RepoRoot); err != nil {
-				fmt.Printf("  %s\n", i18n.T("hooks_failed", err))
-			} else {
-				// Check if backup was created
-				if _, statErr := os.Stat(backupPath); statErr == nil {
-					fmt.Printf("  %s\n", i18n.T("hook_backup_warning", backupPath))
-				}
-				fmt.Printf("  %s\n", i18n.T("hooks_installed"))
-			}
-		}
-	}
-
-	// 2. Clean up invalid workspaces from existing manifest
+	// 1. Clean up invalid workspaces from existing manifest
 	if len(ctx.Manifest.Workspaces) > 0 {
 		cleaned := cleanupInvalidWorkspaces(ctx)
 		if cleaned > 0 {
@@ -298,7 +277,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 2.5. Find and add unregistered workspaces
+	// 2. Find and add unregistered workspaces
 	if len(ctx.Manifest.Workspaces) > 0 {
 		added := addUnregisteredWorkspaces(ctx)
 		if added > 0 {
@@ -341,7 +320,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 3. Apply ignore patterns to mother repo
+	// 2. Apply ignore patterns to mother repo
 	if len(ctx.Manifest.Ignore) > 0 {
 		fmt.Println(i18n.T("applying_ignore"))
 		if err := git.AddIgnorePatternsToGitignore(ctx.RepoRoot, ctx.Manifest.Ignore); err != nil {
@@ -351,7 +330,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 4. Process Mother repo keep files
+	// 3. Process Mother repo keep files
 	issues := 0
 	motherKeepFiles := ctx.Manifest.Keep
 	if len(motherKeepFiles) > 0 {
@@ -369,7 +348,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// 5. Process each workspace
+	// 4. Process each workspace
 	fmt.Println(i18n.T("processing_subclones"))
 
 	for _, ws := range ctx.Manifest.Workspaces {
@@ -466,7 +445,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to save manifest: %w", err)
 	}
 
-	// 6. Check if archiving should run (24 hours check)
+	// 5. Check if archiving should run (24 hours check)
 	multireposDir := filepath.Join(ctx.RepoRoot, ".multirepos")
 	if backup.ShouldRunArchive(multireposDir) {
 		backupDir := filepath.Join(multireposDir, "backup")
