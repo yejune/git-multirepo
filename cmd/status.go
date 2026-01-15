@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/yejune/git-multirepo/internal/common"
 	"github.com/yejune/git-multirepo/internal/git"
+	"github.com/yejune/git-multirepo/internal/hooks"
 	"github.com/yejune/git-multirepo/internal/i18n"
 )
 
@@ -260,6 +261,39 @@ func findRemoteURLMismatches(ctx *common.WorkspaceContext) []IntegrityIssue {
 	return issues
 }
 
+// checkHookStatus checks hook installation status for all workspaces
+func checkHookStatus(ctx *common.WorkspaceContext) (installed int, total int, details []string) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return 0, 0, nil
+	}
+
+	// Find all git repositories under current directory
+	gitRoots, err := findAllGitRoots(cwd)
+	if err != nil {
+		return 0, 0, nil
+	}
+	total = len(gitRoots)
+
+	for _, repoRoot := range gitRoots {
+		relPath, _ := filepath.Rel(ctx.RepoRoot, repoRoot)
+		if relPath == "." {
+			relPath = ctx.RepoRoot
+		} else if relPath == "" {
+			relPath = repoRoot
+		}
+
+		if hooks.IsInstalled(repoRoot) {
+			installed++
+			details = append(details, fmt.Sprintf("  ✓ %s", relPath))
+		} else {
+			details = append(details, fmt.Sprintf("  ✗ %s", relPath))
+		}
+	}
+
+	return installed, total, details
+}
+
 func runStatus(cmd *cobra.Command, args []string) error {
 	// Define color printers
 	// Use Fprintf to always print to the correct stdout
@@ -275,6 +309,28 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	ctx, err := common.LoadWorkspaceContext()
 	if err != nil {
 		return err
+	}
+
+	// Print header
+	fmt.Println()
+	printCyan("Git Multirepo Status\n")
+	printGray("%s\n\n", strings.Repeat("─", 80))
+
+	// Check hook status
+	installed, total, details := checkHookStatus(ctx)
+	if total > 0 {
+		fmt.Printf("Hooks: %d/%d installed\n", installed, total)
+		for _, detail := range details {
+			fmt.Println(detail)
+		}
+
+		if installed < total {
+			fmt.Println()
+			printYellow("Run 'git multirepo install-hook' to install hooks on all workspaces\n")
+		}
+
+		fmt.Println()
+		printGray("%s\n\n", strings.Repeat("─", 80))
 	}
 
 	// Section 0: Multirepo Integrity Check
