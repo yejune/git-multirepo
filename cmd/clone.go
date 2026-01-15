@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/yejune/git-multirepo/internal/git"
 	"github.com/yejune/git-multirepo/internal/hooks"
+	"github.com/yejune/git-multirepo/internal/i18n"
 	"github.com/yejune/git-multirepo/internal/manifest"
 )
 
@@ -108,6 +109,7 @@ func runClone(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("✓ Added repository: %s\n", path)
 	fmt.Printf("  Repository: %s\n", repo)
+	fmt.Printf("\n💡 Tip: %s\n", i18n.T("auto_sync_howto"))
 
 	return nil
 }

@@ -25,7 +25,8 @@ import (
 )
 
 var (
-	syncVerbose bool
+	syncVerbose  bool
+	syncAutoSync bool
 
 	// Color formatters for sync output
 	colorCyan   = color.New(color.FgCyan, color.Bold)
@@ -255,6 +256,7 @@ Examples:
 
 func init() {
 	syncCmd.Flags().BoolVarP(&syncVerbose, "verbose", "v", false, "Show detailed keep file list")
+	syncCmd.Flags().BoolVar(&syncAutoSync, "auto-sync", false, i18n.T("auto_sync_flag_help"))
 	rootCmd.AddCommand(syncCmd)
 }
 
@@ -267,13 +269,22 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	fmt.Println(i18n.T("syncing"))
 
-	// 1. Auto-install hooks
-	if !hooks.IsInstalled(ctx.RepoRoot) {
-		fmt.Println(i18n.T("installing_hooks"))
-		if err := hooks.Install(ctx.RepoRoot); err != nil {
-			fmt.Printf("  %s\n", i18n.T("hooks_failed", err))
-		} else {
-			fmt.Printf("  %s\n", i18n.T("hooks_installed"))
+	// 1. Install hooks only if --auto-sync flag is set
+	if syncAutoSync {
+		if !hooks.IsInstalled(ctx.RepoRoot) {
+			fmt.Println(i18n.T("installing_hooks"))
+			hookPath := filepath.Join(ctx.RepoRoot, ".git", "hooks", "post-checkout")
+			backupPath := hookPath + ".bak"
+
+			if err := hooks.Install(ctx.RepoRoot); err != nil {
+				fmt.Printf("  %s\n", i18n.T("hooks_failed", err))
+			} else {
+				// Check if backup was created
+				if _, statErr := os.Stat(backupPath); statErr == nil {
+					fmt.Printf("  %s\n", i18n.T("hook_backup_warning", backupPath))
+				}
+				fmt.Printf("  %s\n", i18n.T("hooks_installed"))
+			}
 		}
 	}
 

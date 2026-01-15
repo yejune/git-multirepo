@@ -120,6 +120,9 @@ var messages = map[string]map[string]string{
 		"failed_get_remote":    "⚠ %s: failed to get remote URL: %v",
 		"failed_get_commit":    "⚠ %s: failed to get commit: %v",
 		"failed_scan":          "failed to scan directories: %w",
+		"auto_sync_flag_help":  "Enable automatic sync after checkout (installs git hook)",
+		"hook_backup_warning":  "Existing post-checkout hook backed up to: %s",
+		"auto_sync_howto":      "Run 'git multirepo sync --auto-sync' to enable automatic sync",
 	},
 	"ko": {
 		// Pull command
@@ -235,8 +238,13 @@ var messages = map[string]map[string]string{
 		"failed_get_remote":    "⚠ %s: 원격 URL 가져오기 실패: %v",
 		"failed_get_commit":    "⚠ %s: 커밋 가져오기 실패: %v",
 		"failed_scan":          "디렉토리 스캔 실패: %w",
+		"auto_sync_flag_help":  "checkout 후 자동 동기화 활성화 (git hook 설치)",
+		"hook_backup_warning":  "기존 post-checkout hook 백업됨: %s",
+		"auto_sync_howto":      "'git multirepo sync --auto-sync' 명령으로 자동 동기화를 활성화할 수 있습니다",
 	},
 }
+
+// SetLanguage sets the current language for messages
 
 // SetLanguage sets the current language for messages
 func SetLanguage(lang string) {

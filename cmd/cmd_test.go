@@ -136,21 +136,37 @@ func TestRunSync(t *testing.T) {
 	}
 	manifest.Save(dir, m)
 
-	t.Run("sync applies configuration", func(t *testing.T) {
+	t.Run("sync applies configuration without hooks by default", func(t *testing.T) {
+		// Test default behavior (no hook installation)
+		syncAutoSync = false
 		err := runSync(syncCmd, []string{})
 		if err != nil {
 			t.Fatalf("runSync failed: %v", err)
 		}
 
-		// Check hooks installed
-		if !hooks.IsInstalled(dir) {
-			t.Error("hooks should be installed")
+		// Check hooks NOT installed by default
+		if hooks.IsInstalled(dir) {
+			t.Error("hooks should not be installed by default")
 		}
 
 		// Check .gitignore updated
 		gitignoreContent, _ := os.ReadFile(filepath.Join(dir, ".gitignore"))
 		if !strings.Contains(string(gitignoreContent), "*.log") {
 			t.Error(".gitignore should contain ignore pattern")
+		}
+	})
+
+	t.Run("sync with --auto-sync flag installs hooks", func(t *testing.T) {
+		// Test with --auto-sync flag
+		syncAutoSync = true
+		err := runSync(syncCmd, []string{})
+		if err != nil {
+			t.Fatalf("runSync failed: %v", err)
+		}
+
+		// Check hooks installed with flag
+		if !hooks.IsInstalled(dir) {
+			t.Error("hooks should be installed with --auto-sync flag")
 		}
 	})
 

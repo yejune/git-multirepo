@@ -55,6 +55,7 @@ cd "$PARENT_ROOT" && git-multirepo sync 2>/dev/null || true
 `
 
 // Install installs git hooks in the repository
+// If an existing hook is found that's not ours, it backs it up
 func Install(repoRoot string) error {
 	hooksDir := filepath.Join(repoRoot, ".git", "hooks")
 
@@ -63,8 +64,23 @@ func Install(repoRoot string) error {
 		return err
 	}
 
-	// Install post-checkout hook
 	hookPath := filepath.Join(hooksDir, "post-checkout")
+
+	// Check if hook already exists
+	existingContent, err := os.ReadFile(hookPath)
+	if err == nil {
+		// Hook exists - check if it's ours
+		if string(existingContent) != postCheckoutHook {
+			// Different hook - backup first
+			backupPath := hookPath + ".bak"
+			if err := os.WriteFile(backupPath, existingContent, 0755); err != nil {
+				return err
+			}
+			// Note: caller should display backup warning message
+		}
+	}
+
+	// Install post-checkout hook (overwrites if exists)
 	return os.WriteFile(hookPath, []byte(postCheckoutHook), 0755)
 }
 
