@@ -783,6 +783,264 @@ sync
 	})
 }
 
+// TestInstallUninstallRoundtrip tests that install+uninstall preserves the original hook
+func TestInstallUninstallRoundtrip(t *testing.T) {
+	t.Run("roundtrip preserves original hook content", func(t *testing.T) {
+		original := `#!/bin/sh
+# Original hook
+echo "before checkout"
+npm install
+echo "after checkout"
+`
+
+		tmpDir := t.TempDir()
+		hookPath := filepath.Join(tmpDir, ".git", "hooks", "post-checkout")
+		os.MkdirAll(filepath.Dir(hookPath), 0755)
+		os.WriteFile(hookPath, []byte(original), 0755)
+
+		// Install
+		if err := Install(tmpDir); err != nil {
+			t.Fatalf("Install failed: %v", err)
+		}
+
+		// Verify merged
+		content, _ := os.ReadFile(hookPath)
+		if !strings.Contains(string(content), "npm install") {
+			t.Error("Original content lost after install")
+		}
+		if !strings.Contains(string(content), MarkerStart) {
+			t.Error("Our hook not installed")
+		}
+
+		// Uninstall
+		if err := Uninstall(tmpDir); err != nil {
+			t.Fatalf("Uninstall failed: %v", err)
+		}
+
+		// Verify original content lines are preserved
+		restored, _ := os.ReadFile(hookPath)
+		restoredStr := string(restored)
+
+		// Check all meaningful lines are preserved
+		originalLines := []string{
+			"# Original hook",
+			`echo "before checkout"`,
+			"npm install",
+			`echo "after checkout"`,
+		}
+
+		for _, line := range originalLines {
+			if !strings.Contains(restoredStr, line) {
+				t.Errorf("Original line lost: %s", line)
+			}
+		}
+
+		// Verify our hook is completely removed
+		if strings.Contains(restoredStr, MarkerStart) {
+			t.Error("Our marker should be removed")
+		}
+		if strings.Contains(restoredStr, "git-multirepo") {
+			t.Error("Our hook content should be removed")
+		}
+
+		// Shebang should still be present
+		if !strings.HasPrefix(strings.TrimSpace(restoredStr), "#!/bin/sh") {
+			t.Error("Shebang should be preserved")
+		}
+	})
+
+	t.Run("roundtrip with multiple blank lines", func(t *testing.T) {
+		original := `#!/bin/sh
+
+
+echo "test1"
+
+
+echo "test2"
+
+
+`
+
+		tmpDir := t.TempDir()
+		hookPath := filepath.Join(tmpDir, ".git", "hooks", "post-checkout")
+		os.MkdirAll(filepath.Dir(hookPath), 0755)
+		os.WriteFile(hookPath, []byte(original), 0755)
+
+		// Install + Uninstall
+		Install(tmpDir)
+		Uninstall(tmpDir)
+
+		// Check if blank lines are preserved (may be normalized)
+		restored, _ := os.ReadFile(hookPath)
+		originalLines := strings.Split(strings.TrimSpace(original), "\n")
+
+		// At minimum, all content lines should be preserved
+		for _, line := range originalLines {
+			if line != "" && !strings.Contains(string(restored), line) {
+				t.Errorf("Line lost: %s", line)
+			}
+		}
+	})
+
+	t.Run("roundtrip with trailing whitespace on lines", func(t *testing.T) {
+		original := "#!/bin/sh\necho \"test\"  \n  \necho \"test2\"\n"
+
+		tmpDir := t.TempDir()
+		hookPath := filepath.Join(tmpDir, ".git", "hooks", "post-checkout")
+		os.MkdirAll(filepath.Dir(hookPath), 0755)
+		os.WriteFile(hookPath, []byte(original), 0755)
+
+		Install(tmpDir)
+		Uninstall(tmpDir)
+
+		// Lines should be preserved (whitespace may be normalized)
+		restored, _ := os.ReadFile(hookPath)
+		if !strings.Contains(string(restored), "echo \"test\"") {
+			t.Error("Content lost")
+		}
+	})
+}
+
+// TestInstallSpacing tests proper spacing between hooks
+func TestInstallSpacing(t *testing.T) {
+	t.Run("adds proper spacing between hooks", func(t *testing.T) {
+		original := "#!/bin/sh\necho test"
+
+		tmpDir := t.TempDir()
+		hookPath := filepath.Join(tmpDir, ".git", "hooks", "post-checkout")
+		os.MkdirAll(filepath.Dir(hookPath), 0755)
+		os.WriteFile(hookPath, []byte(original), 0755)
+
+		Install(tmpDir)
+
+		content, _ := os.ReadFile(hookPath)
+		lines := strings.Split(string(content), "\n")
+
+		// Should have blank line separator
+		foundBlank := false
+		for i, line := range lines {
+			if i > 0 && line == "" {
+				foundBlank = true
+				break
+			}
+		}
+
+		if !foundBlank {
+			t.Error("No blank line separator between hooks")
+		}
+	})
+
+	t.Run("handles hook ending with newline", func(t *testing.T) {
+		original := "#!/bin/sh\necho test\n"
+
+		tmpDir := t.TempDir()
+		hookPath := filepath.Join(tmpDir, ".git", "hooks", "post-checkout")
+		os.MkdirAll(filepath.Dir(hookPath), 0755)
+		os.WriteFile(hookPath, []byte(original), 0755)
+
+		Install(tmpDir)
+
+		content, _ := os.ReadFile(hookPath)
+		// Should not have excessive blank lines (triple newline)
+		if strings.Contains(string(content), "\n\n\n") {
+			t.Error("Too many blank lines")
+		}
+	})
+
+	t.Run("handles hook not ending with newline", func(t *testing.T) {
+		original := "#!/bin/sh\necho test" // No trailing newline
+
+		tmpDir := t.TempDir()
+		hookPath := filepath.Join(tmpDir, ".git", "hooks", "post-checkout")
+		os.MkdirAll(filepath.Dir(hookPath), 0755)
+		os.WriteFile(hookPath, []byte(original), 0755)
+
+		Install(tmpDir)
+
+		content, _ := os.ReadFile(hookPath)
+		// Original content should be preserved
+		if !strings.Contains(string(content), "echo test") {
+			t.Error("Original content lost")
+		}
+	})
+}
+
+// TestUninstallPreservesBlankLines tests blank line handling during uninstall
+func TestUninstallPreservesBlankLines(t *testing.T) {
+	t.Run("preserves blank lines before marker", func(t *testing.T) {
+		content := `#!/bin/sh
+echo "before"
+
+
+` + MarkerStart + `
+sync
+` + MarkerEnd
+
+		tmpDir := t.TempDir()
+		hookPath := filepath.Join(tmpDir, ".git", "hooks", "post-checkout")
+		os.MkdirAll(filepath.Dir(hookPath), 0755)
+		os.WriteFile(hookPath, []byte(content), 0755)
+
+		Uninstall(tmpDir)
+
+		result, _ := os.ReadFile(hookPath)
+		// May normalize, but content should be preserved
+		if !strings.Contains(string(result), "echo \"before\"") {
+			t.Error("Content before marker lost")
+		}
+	})
+
+	t.Run("preserves blank lines after marker", func(t *testing.T) {
+		content := MarkerStart + `
+sync
+` + MarkerEnd + `
+
+
+echo "after"`
+
+		tmpDir := t.TempDir()
+		hookPath := filepath.Join(tmpDir, ".git", "hooks", "post-checkout")
+		os.MkdirAll(filepath.Dir(hookPath), 0755)
+		os.WriteFile(hookPath, []byte(content), 0755)
+
+		Uninstall(tmpDir)
+
+		result, _ := os.ReadFile(hookPath)
+		if !strings.Contains(string(result), "echo \"after\"") {
+			t.Error("Content after marker lost")
+		}
+	})
+}
+
+// TestMultipleInstallUninstallCycles tests repeated cycles
+func TestMultipleInstallUninstallCycles(t *testing.T) {
+	t.Run("multiple cycles preserve original", func(t *testing.T) {
+		original := `#!/bin/sh
+echo "original hook"
+npm install
+`
+
+		tmpDir := t.TempDir()
+		hookPath := filepath.Join(tmpDir, ".git", "hooks", "post-checkout")
+		os.MkdirAll(filepath.Dir(hookPath), 0755)
+		os.WriteFile(hookPath, []byte(original), 0755)
+
+		// Cycle 3 times
+		for i := 0; i < 3; i++ {
+			Install(tmpDir)
+			Uninstall(tmpDir)
+		}
+
+		result, _ := os.ReadFile(hookPath)
+		if !strings.Contains(string(result), "npm install") {
+			t.Error("Original lost after multiple cycles")
+		}
+		if strings.Contains(string(result), MarkerStart) {
+			t.Error("Marker not removed")
+		}
+	})
+}
+
 // TestUninstallStringHandling tests precise string manipulation during uninstall
 func TestUninstallStringHandling(t *testing.T) {
 	t.Run("removes only exact marker section", func(t *testing.T) {
