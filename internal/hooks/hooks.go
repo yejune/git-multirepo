@@ -214,3 +214,46 @@ func IsWorkspaceHookInstalled(workspacePath string) bool {
 	}
 	return strings.Contains(string(content), hookMarkerStart)
 }
+
+// UninstallWorkspaceHook removes only our post-commit hook from workspace
+// If other hooks exist, they are preserved
+func UninstallWorkspaceHook(workspacePath string) error {
+	hookPath := filepath.Join(workspacePath, ".git", "hooks", "post-commit")
+
+	content, err := os.ReadFile(hookPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // Hook doesn't exist, nothing to do
+		}
+		return err
+	}
+
+	strContent := string(content)
+
+	// Find and remove our section
+	startIdx := strings.Index(strContent, hookMarkerStart)
+	endIdx := strings.Index(strContent, hookMarkerEnd)
+
+	if startIdx == -1 || endIdx == -1 {
+		return nil // Our hook not found
+	}
+
+	// Remove our section (including markers and trailing newline)
+	before := strContent[:startIdx]
+	after := strContent[endIdx+len(hookMarkerEnd):]
+
+	// Remove trailing newline after marker if present
+	if strings.HasPrefix(after, "\n") {
+		after = after[1:]
+	}
+
+	newContent := strings.TrimSpace(before + after)
+
+	// If only shebang left or empty, delete file
+	if newContent == "" || newContent == "#!/bin/sh" {
+		return os.Remove(hookPath)
+	}
+
+	// Write back remaining content
+	return os.WriteFile(hookPath, []byte(newContent+"\n"), 0755)
+}
