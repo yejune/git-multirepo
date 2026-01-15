@@ -44,9 +44,19 @@ func init() {
 func findAllGitRoots(startPath string) ([]string, error) {
 	var gitRoots []string
 
+	// First check if startPath itself is a git repository
+	if _, err := os.Stat(filepath.Join(startPath, ".git")); err == nil {
+		gitRoots = append(gitRoots, startPath)
+	}
+
 	err := filepath.Walk(startPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil // Skip errors
+		}
+
+		// Skip the root .git directory (already added above)
+		if path == filepath.Join(startPath, ".git") {
+			return filepath.SkipDir
 		}
 
 		if info.IsDir() && info.Name() == ".git" {
@@ -100,23 +110,63 @@ func runInstallHook(cmd *cobra.Command, args []string) error {
 
 	installed := 0
 	skipped := 0
+	rootCount := 0
+	workspaceCount := 0
 
 	for _, repoRoot := range gitRoots {
-		if hooks.IsInstalled(repoRoot) {
+		// Determine if this is a root repository or workspace
+		isRoot := isRootRepository(repoRoot)
+
+		var isInstalled bool
+		var installErr error
+		var hookType string
+
+		if isRoot {
+			// Root repository: install post-checkout hook
+			isInstalled = hooks.IsInstalled(repoRoot)
+			hookType = "post-checkout"
+			if !isInstalled {
+				installErr = hooks.Install(repoRoot)
+				if installErr == nil {
+					rootCount++
+				}
+			}
+		} else {
+			// Workspace repository: install post-commit hook
+			isInstalled = hooks.IsWorkspaceHookInstalled(repoRoot)
+			hookType = "post-commit"
+			if !isInstalled {
+				installErr = hooks.InstallWorkspaceHook(repoRoot)
+				if installErr == nil {
+					workspaceCount++
+				}
+			}
+		}
+
+		if isInstalled {
 			skipped++
 			continue
 		}
 
-		if err := hooks.Install(repoRoot); err != nil {
-			fmt.Printf("  ✗ %s: %v\n", repoRoot, err)
+		if installErr != nil {
+			fmt.Printf("  ✗ %s (%s): %v\n", repoRoot, hookType, installErr)
 			continue
 		}
 
 		installed++
-		fmt.Printf("  ✓ %s\n", repoRoot)
+		fmt.Printf("  ✓ %s (%s)\n", repoRoot, hookType)
 	}
 
-	fmt.Printf("\nInstalled: %d, Skipped: %d (already installed)\n", installed, skipped)
+	fmt.Printf("\n")
+	if rootCount > 0 && workspaceCount > 0 {
+		fmt.Printf("Installed: %d (%d root, %d workspaces), Skipped: %d (already installed)\n",
+			installed, rootCount, workspaceCount, skipped)
+	} else if rootCount > 0 {
+		fmt.Printf("Installed: %d (root only), Skipped: %d (already installed)\n", installed, skipped)
+	} else {
+		fmt.Printf("Installed: %d (workspaces only), Skipped: %d (already installed)\n", installed, skipped)
+	}
+
 	return nil
 }
 
@@ -140,22 +190,58 @@ func runUninstallHook(cmd *cobra.Command, args []string) error {
 
 	removed := 0
 	skipped := 0
+	rootCount := 0
+	workspaceCount := 0
 
 	for _, repoRoot := range gitRoots {
-		if !hooks.IsInstalled(repoRoot) {
+		// Determine if this is a root repository or workspace
+		isRoot := isRootRepository(repoRoot)
+
+		var isInstalled bool
+		var uninstallErr error
+		var hookType string
+
+		if isRoot {
+			// Root repository: check and remove post-checkout hook
+			isInstalled = hooks.IsInstalled(repoRoot)
+			hookType = "post-checkout"
+			if isInstalled {
+				uninstallErr = hooks.Uninstall(repoRoot)
+				rootCount++
+			}
+		} else {
+			// Workspace repository: check and remove post-commit hook
+			isInstalled = hooks.IsWorkspaceHookInstalled(repoRoot)
+			hookType = "post-commit"
+			if isInstalled {
+				uninstallErr = hooks.UninstallWorkspaceHook(repoRoot)
+				workspaceCount++
+			}
+		}
+
+		if !isInstalled {
 			skipped++
 			continue
 		}
 
-		if err := hooks.Uninstall(repoRoot); err != nil {
-			fmt.Printf("  ✗ %s: %v\n", repoRoot, err)
+		if uninstallErr != nil {
+			fmt.Printf("  ✗ %s (%s): %v\n", repoRoot, hookType, uninstallErr)
 			continue
 		}
 
 		removed++
-		fmt.Printf("  ✓ %s\n", repoRoot)
+		fmt.Printf("  ✓ %s (%s)\n", repoRoot, hookType)
 	}
 
-	fmt.Printf("\nRemoved: %d, Skipped: %d (not installed)\n", removed, skipped)
+	fmt.Printf("\nRemoved: %d (%d root, %d workspaces), Skipped: %d (not installed)\n",
+		removed, rootCount, workspaceCount, skipped)
 	return nil
+}
+
+// isRootRepository checks if the given repository is a multirepo root
+// by checking if .git.multirepos exists in its directory
+func isRootRepository(repoRoot string) bool {
+	manifestPath := filepath.Join(repoRoot, ".git.multirepos")
+	_, err := os.Stat(manifestPath)
+	return err == nil
 }
