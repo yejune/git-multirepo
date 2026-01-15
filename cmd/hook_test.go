@@ -261,3 +261,226 @@ func TestFindAllGitRoots(t *testing.T) {
 		}
 	})
 }
+
+func TestHookCommandsDoesNotAffectParent(t *testing.T) {
+	// Create directory structure:
+	// tmpDir/
+	//   .git/           <- parent (should NOT be affected)
+	//   child/
+	//     .git/         <- run install-hook from here
+	//     subdir/
+	//       .git/       <- child (should be affected)
+
+	tmpDir := t.TempDir()
+
+	// Create parent git repo
+	parentGitDir := filepath.Join(tmpDir, ".git")
+	parentHooksDir := filepath.Join(parentGitDir, "hooks")
+	if err := os.MkdirAll(parentHooksDir, 0755); err != nil {
+		t.Fatalf("Failed to create parent .git/hooks directory: %v", err)
+	}
+
+	// Create child directory with git repo
+	childDir := filepath.Join(tmpDir, "child")
+	childGitDir := filepath.Join(childDir, ".git")
+	childHooksDir := filepath.Join(childGitDir, "hooks")
+	if err := os.MkdirAll(childHooksDir, 0755); err != nil {
+		t.Fatalf("Failed to create child .git/hooks directory: %v", err)
+	}
+
+	// Create subdir under child with git repo
+	subdirDir := filepath.Join(childDir, "subdir")
+	subdirGitDir := filepath.Join(subdirDir, ".git")
+	subdirHooksDir := filepath.Join(subdirGitDir, "hooks")
+	if err := os.MkdirAll(subdirHooksDir, 0755); err != nil {
+		t.Fatalf("Failed to create subdir .git/hooks directory: %v", err)
+	}
+
+	// Save original working directory
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current directory: %v", err)
+	}
+	defer os.Chdir(origWd)
+
+	t.Run("install-hook from child does not affect parent", func(t *testing.T) {
+		// Change to child directory
+		if err := os.Chdir(childDir); err != nil {
+			t.Fatalf("Failed to change to child directory: %v", err)
+		}
+
+		// Run install-hook from child
+		if err := runInstallHook(installHookCmd, []string{}); err != nil {
+			t.Fatalf("install-hook failed: %v", err)
+		}
+
+		// Check parent does NOT have hook
+		if hooks.IsInstalled(tmpDir) {
+			t.Error("Parent hook should NOT be installed")
+		}
+
+		// Check child has hook
+		if !hooks.IsInstalled(childDir) {
+			t.Error("Child hook should be installed")
+		}
+
+		// Check subdir has hook
+		if !hooks.IsInstalled(subdirDir) {
+			t.Error("Subdir hook should be installed")
+		}
+	})
+
+	t.Run("uninstall-hook from child does not affect parent", func(t *testing.T) {
+		// Manually install hook in parent for testing
+		parentHook := filepath.Join(parentHooksDir, "post-checkout")
+		testHookContent := []byte("#!/bin/sh\n# test hook\n")
+		if err := os.WriteFile(parentHook, testHookContent, 0755); err != nil {
+			t.Fatalf("Failed to create test hook in parent: %v", err)
+		}
+
+		// Change to child directory
+		if err := os.Chdir(childDir); err != nil {
+			t.Fatalf("Failed to change to child directory: %v", err)
+		}
+
+		// Run uninstall-hook from child
+		if err := runUninstallHook(uninstallHookCmd, []string{}); err != nil {
+			t.Fatalf("uninstall-hook failed: %v", err)
+		}
+
+		// Check parent hook still exists (file should not be deleted)
+		if _, err := os.Stat(parentHook); os.IsNotExist(err) {
+			t.Error("Parent hook file should still exist (not affected)")
+		} else if err != nil {
+			t.Errorf("Failed to check parent hook: %v", err)
+		}
+
+		// Verify parent hook content is unchanged
+		content, err := os.ReadFile(parentHook)
+		if err != nil {
+			t.Errorf("Failed to read parent hook: %v", err)
+		} else if string(content) != string(testHookContent) {
+			t.Error("Parent hook content was modified")
+		}
+
+		// Check child does NOT have hook
+		if hooks.IsInstalled(childDir) {
+			t.Error("Child hook should be removed")
+		}
+
+		// Check subdir does NOT have hook
+		if hooks.IsInstalled(subdirDir) {
+			t.Error("Subdir hook should be removed")
+		}
+	})
+}
+
+func TestHookCommandsDeepNesting(t *testing.T) {
+	// Create deeply nested structure (5 levels):
+	// root/
+	//   level1/.git              ← 1단계
+	//   level1/level2/.git       ← 2단계
+	//   level1/level2/level3/.git           ← 3단계
+	//   level1/level2/level3/level4/.git    ← 4단계
+	//   level1/level2/level3/level4/level5/.git  ← 5단계
+
+	tmpDir := t.TempDir()
+
+	// Build nested structure
+	levels := []string{
+		"level1",
+		filepath.Join("level1", "level2"),
+		filepath.Join("level1", "level2", "level3"),
+		filepath.Join("level1", "level2", "level3", "level4"),
+		filepath.Join("level1", "level2", "level3", "level4", "level5"),
+	}
+
+	levelPaths := make([]string, 0, len(levels))
+
+	for _, levelPath := range levels {
+		fullPath := filepath.Join(tmpDir, levelPath)
+		gitDir := filepath.Join(fullPath, ".git")
+		hooksDir := filepath.Join(gitDir, "hooks")
+
+		if err := os.MkdirAll(hooksDir, 0755); err != nil {
+			t.Fatalf("Failed to create %s: %v", hooksDir, err)
+		}
+
+		levelPaths = append(levelPaths, fullPath)
+	}
+
+	// Save original working directory
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current directory: %v", err)
+	}
+	defer os.Chdir(origWd)
+
+	t.Run("install-hook works with deeply nested structure", func(t *testing.T) {
+		// Change to root directory
+		if err := os.Chdir(tmpDir); err != nil {
+			t.Fatalf("Failed to change to tmpDir: %v", err)
+		}
+
+		// Run install-hook
+		if err := runInstallHook(installHookCmd, []string{}); err != nil {
+			t.Fatalf("install-hook failed: %v", err)
+		}
+
+		// Verify all hooks are installed
+		for i, levelPath := range levelPaths {
+			if !hooks.IsInstalled(levelPath) {
+				t.Errorf("Hook not installed at level %d (%s)", i+1, levelPath)
+			}
+		}
+	})
+
+	t.Run("uninstall-hook works with deeply nested structure", func(t *testing.T) {
+		// Change to root directory
+		if err := os.Chdir(tmpDir); err != nil {
+			t.Fatalf("Failed to change to tmpDir: %v", err)
+		}
+
+		// Run uninstall-hook
+		if err := runUninstallHook(uninstallHookCmd, []string{}); err != nil {
+			t.Fatalf("uninstall-hook failed: %v", err)
+		}
+
+		// Verify all hooks are removed
+		for i, levelPath := range levelPaths {
+			if hooks.IsInstalled(levelPath) {
+				t.Errorf("Hook still exists at level %d (%s)", i+1, levelPath)
+			}
+		}
+	})
+
+	t.Run("install-hook from middle level only affects descendants", func(t *testing.T) {
+		// Install from level3 (index 2)
+		level3Dir := levelPaths[2]
+
+		if err := os.Chdir(level3Dir); err != nil {
+			t.Fatalf("Failed to change to level3 directory: %v", err)
+		}
+
+		// Run install-hook from level3
+		if err := runInstallHook(installHookCmd, []string{}); err != nil {
+			t.Fatalf("install-hook failed: %v", err)
+		}
+
+		// Check level1, level2: should NOT have hooks (ancestors)
+		ancestorPaths := levelPaths[:2]
+		for i, levelPath := range ancestorPaths {
+			if hooks.IsInstalled(levelPath) {
+				t.Errorf("Ancestor hook should NOT exist at level %d (%s)", i+1, levelPath)
+			}
+		}
+
+		// Check level3, level4, level5: should HAVE hooks (self + descendants)
+		descendantPaths := levelPaths[2:]
+		for i, levelPath := range descendantPaths {
+			if !hooks.IsInstalled(levelPath) {
+				t.Errorf("Hook should exist at level %d (%s)", i+3, levelPath)
+			}
+		}
+	})
+}

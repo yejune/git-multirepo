@@ -36,7 +36,6 @@ For each repository, shows:
 
 func init() {
 	statusCmd.Flags().BoolVar(&statusFetch, "fetch", false, "Fetch from remote before showing status")
-	rootCmd.AddCommand(statusCmd)
 }
 
 // IntegrityIssue represents an integrity validation issue

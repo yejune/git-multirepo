@@ -37,8 +37,7 @@ Examples:
 }
 
 func init() {
-	rootCmd.AddCommand(installHookCmd)
-	rootCmd.AddCommand(uninstallHookCmd)
+	// Commands registered in root.go init() in workflow order
 }
 
 // findAllGitRoots finds all .git directories under the given path

@@ -35,7 +35,6 @@ Examples:
 func init() {
 	removeCmd.Flags().BoolVarP(&removeForce, "force", "f", false, "Skip confirmation")
 	removeCmd.Flags().BoolVar(&removeKeepFiles, "keep-files", false, "Keep files, only remove from manifest")
-	rootCmd.AddCommand(removeCmd)
 }
 
 func runRemove(cmd *cobra.Command, args []string) error {

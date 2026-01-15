@@ -255,7 +255,6 @@ Examples:
 
 func init() {
 	syncCmd.Flags().BoolVarP(&syncVerbose, "verbose", "v", false, "Show detailed keep file list")
-	rootCmd.AddCommand(syncCmd)
 }
 
 func runSync(cmd *cobra.Command, args []string) error {

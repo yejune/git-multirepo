@@ -29,7 +29,6 @@ Examples:
 
 func init() {
 	listCmd.Flags().BoolVarP(&listRecursive, "recursive", "r", false, "Recursively list workspaces within workspaces")
-	rootCmd.AddCommand(listCmd)
 }
 
 func runList(cmd *cobra.Command, args []string) error {

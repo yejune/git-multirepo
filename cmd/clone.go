@@ -39,7 +39,6 @@ Examples:
 func init() {
 	cloneCmd.Flags().StringVarP(&cloneBranch, "branch", "b", "", "Branch to clone")
 	cloneCmd.Flags().StringVarP(&clonePath, "path", "p", "", "Destination path")
-	rootCmd.AddCommand(cloneCmd)
 }
 
 func runClone(cmd *cobra.Command, args []string) error {

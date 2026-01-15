@@ -26,7 +26,7 @@ Examples:
 }
 
 func init() {
-	rootCmd.AddCommand(selfupdateCmd)
+	// Command registered in root.go init() in workflow order
 }
 
 // updaterFactory allows dependency injection for testing

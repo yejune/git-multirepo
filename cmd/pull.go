@@ -33,7 +33,7 @@ For each repository:
 }
 
 func init() {
-	rootCmd.AddCommand(pullCmd)
+	// Command registered in root.go init() in workflow order
 }
 
 func runPull(cmd *cobra.Command, args []string) error {

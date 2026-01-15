@@ -29,7 +29,7 @@ Examples:
 }
 
 func init() {
-	rootCmd.AddCommand(branchCmd)
+	// Command registered in root.go init() in workflow order
 }
 
 func runBranch(cmd *cobra.Command, args []string) error {

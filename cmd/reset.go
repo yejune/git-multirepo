@@ -26,7 +26,7 @@ All hidden files will become visible again.`,
 }
 
 func init() {
-	rootCmd.AddCommand(resetCmd)
+	// Command registered in root.go init() in workflow order
 }
 
 func runReset(cmd *cobra.Command, args []string) error {
