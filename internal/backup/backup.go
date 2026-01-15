@@ -13,8 +13,8 @@ import (
 )
 
 // CreatePatchBackup backs up a patch file with timestamp to the backup directory
-// Backup structure: backup/patched/yyyy/mm/dd/sub-path/file.yyyymmdd_hhmmss.patch
-func CreatePatchBackup(patchPath, backupDir string) error {
+// Backup structure: backup/patched/{workspace|multirepo}/{workspace-path}/{branch}/yyyy/mm/dd/file.yyyymmdd_hhmmss.patch
+func CreatePatchBackup(patchPath, backupDir, workspace, branch string) error {
 	// Check if patch file exists
 	if _, err := os.Stat(patchPath); os.IsNotExist(err) {
 		return nil // No patch to backup
@@ -34,9 +34,20 @@ func CreatePatchBackup(patchPath, backupDir string) error {
 		relPath = patchPath[idx+len(".multirepos-patches/"):]
 	}
 
+	// Determine backup type directory
+	var typeDir string
+	if workspace == "" {
+		// Root repository: backup/patched/workspace/{branch}/{date}/file.ext
+		typeDir = filepath.Join(backupDir, "patched", "workspace", branch,
+			now.Format("2006"), now.Format("01"), now.Format("02"))
+	} else {
+		// Singlerepo: backup/patched/multirepo/{workspace}/{branch}/{date}/file.ext
+		typeDir = filepath.Join(backupDir, "patched", "multirepo", workspace, branch,
+			now.Format("2006"), now.Format("01"), now.Format("02"))
+	}
+
 	// NEW: Check if today's backup with identical content exists
-	todayDir := filepath.Join(backupDir, "patched", now.Format("2006"), now.Format("01"), now.Format("02"))
-	latestBackup := findLatestBackup(todayDir, relPath)
+	latestBackup := findLatestBackup(typeDir, relPath)
 
 	// NEW: Compare with latest backup
 	if latestBackup != "" {
@@ -47,15 +58,8 @@ func CreatePatchBackup(patchPath, backupDir string) error {
 		}
 	}
 
-	// Build backup path: backup/patched/yyyy/mm/dd/...
-	backupPath := filepath.Join(
-		backupDir,
-		"patched",
-		now.Format("2006"),
-		now.Format("01"),
-		now.Format("02"),
-		relPath,
-	)
+	// Build backup path
+	backupPath := filepath.Join(typeDir, relPath)
 
 	// Add timestamp to filename
 	dir := filepath.Dir(backupPath)
@@ -74,8 +78,8 @@ func CreatePatchBackup(patchPath, backupDir string) error {
 }
 
 // CreateFileBackup backs up the entire file with timestamp
-// Backup structure: backup/modified/yyyy/mm/dd/sub-path/file.yyyymmdd_hhmmss.ext
-func CreateFileBackup(filePath, backupDir, repoRoot string) error {
+// Backup structure: backup/modified/{workspace|multirepo}/{workspace-path}/{branch}/yyyy/mm/dd/file.yyyymmdd_hhmmss.ext
+func CreateFileBackup(filePath, backupDir, repoRoot, workspace, branch string) error {
 	// Check if file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return nil // No file to backup
@@ -97,9 +101,20 @@ func CreateFileBackup(filePath, backupDir, repoRoot string) error {
 		}
 	}
 
+	// Determine backup type directory
+	var typeDir string
+	if workspace == "" {
+		// Root repository: backup/modified/workspace/{branch}/{date}/file.ext
+		typeDir = filepath.Join(backupDir, "modified", "workspace", branch,
+			now.Format("2006"), now.Format("01"), now.Format("02"))
+	} else {
+		// Singlerepo: backup/modified/multirepo/{workspace}/{branch}/{date}/file.ext
+		typeDir = filepath.Join(backupDir, "modified", "multirepo", workspace, branch,
+			now.Format("2006"), now.Format("01"), now.Format("02"))
+	}
+
 	// NEW: Check if today's backup with identical content exists
-	todayDir := filepath.Join(backupDir, "modified", now.Format("2006"), now.Format("01"), now.Format("02"))
-	latestBackup := findLatestBackup(todayDir, relPath)
+	latestBackup := findLatestBackup(typeDir, relPath)
 
 	// NEW: Compare with latest backup
 	if latestBackup != "" {
@@ -110,15 +125,8 @@ func CreateFileBackup(filePath, backupDir, repoRoot string) error {
 		}
 	}
 
-	// Build backup path: backup/modified/yyyy/mm/dd/...
-	backupPath := filepath.Join(
-		backupDir,
-		"modified",
-		now.Format("2006"),
-		now.Format("01"),
-		now.Format("02"),
-		relPath,
-	)
+	// Build backup path
+	backupPath := filepath.Join(typeDir, relPath)
 
 	// Add timestamp to filename
 	dir := filepath.Dir(backupPath)

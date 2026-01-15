@@ -49,9 +49,16 @@ func runReset(cmd *cobra.Command, args []string) error {
 	if len(m.Keep) > 0 {
 		fmt.Println("\nMother repo:")
 
+		// Get current branch for mother repo
+		currentBranch, branchErr := git.GetCurrentBranch(repoRoot)
+		if branchErr != nil {
+			currentBranch = "HEAD"
+			fmt.Printf("  Warning: failed to get branch, using HEAD: %v\n", branchErr)
+		}
+
 		// 백업
 		for _, file := range m.Keep {
-			if err := backup.CreateFileBackup(filepath.Join(repoRoot, file), backupDir, repoRoot); err != nil {
+			if err := backup.CreateFileBackup(filepath.Join(repoRoot, file), backupDir, repoRoot, "", currentBranch); err != nil {
 				return fmt.Errorf("failed to backup %s: %w", file, err)
 			}
 		}
@@ -74,9 +81,16 @@ func runReset(cmd *cobra.Command, args []string) error {
 			fullPath := filepath.Join(repoRoot, ws.Path)
 			fmt.Printf("\n%s:\n", ws.Path)
 
+			// Get current branch for this workspace
+			currentBranch, branchErr := git.GetCurrentBranch(fullPath)
+			if branchErr != nil {
+				currentBranch = "HEAD"
+				fmt.Printf("  Warning: failed to get branch, using HEAD: %v\n", branchErr)
+			}
+
 			// 백업
 			for _, file := range ws.Keep {
-				if err := backup.CreateFileBackup(filepath.Join(fullPath, file), backupDir, repoRoot); err != nil {
+				if err := backup.CreateFileBackup(filepath.Join(fullPath, file), backupDir, repoRoot, ws.Path, currentBranch); err != nil {
 					return fmt.Errorf("failed to backup %s: %w", file, err)
 				}
 			}

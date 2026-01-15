@@ -711,6 +711,13 @@ func processKeepFiles(repoRoot, workspacePath string, keepFiles []string, issues
 	// 3. Process ALL modified files within a single transaction
 	var modifiedFiles []string
 	err = git.WithSkipWorktreeTransaction(workspacePath, keepFiles, func() error {
+		// Get current branch for this workspace
+		currentBranch, branchErr := git.GetCurrentBranch(workspacePath)
+		if branchErr != nil {
+			currentBranch = "HEAD"
+			fmt.Printf("        Warning: failed to get branch, using HEAD: %v\n", branchErr)
+		}
+
 		// 3a. Get modified files
 		var err error
 		modifiedFiles, err = git.GetModifiedFiles(workspacePath)
@@ -774,7 +781,7 @@ func processKeepFiles(repoRoot, workspacePath string, keepFiles []string, issues
 			}
 
 			// Backup original file to backup/modified/
-			if backupErr := backup.CreateFileBackup(filePath, backupDir, repoRoot); backupErr != nil {
+			if backupErr := backup.CreateFileBackup(filePath, backupDir, repoRoot, relPath, currentBranch); backupErr != nil {
 				fmt.Printf("        Failed to backup %s: %v\n", file, backupErr)
 				*issues++
 				continue
@@ -789,7 +796,7 @@ func processKeepFiles(repoRoot, workspacePath string, keepFiles []string, issues
 			}
 
 			// Backup patch to backup/patched/
-			if patchBackupErr := backup.CreatePatchBackup(patchPath, backupDir); patchBackupErr != nil {
+			if patchBackupErr := backup.CreatePatchBackup(patchPath, backupDir, relPath, currentBranch); patchBackupErr != nil {
 				fmt.Printf("        Failed to backup patch for %s: %v\n", file, patchBackupErr)
 				*issues++
 				continue

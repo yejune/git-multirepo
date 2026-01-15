@@ -308,14 +308,15 @@ func TestCreateFileBackup_Deduplication(t *testing.T) {
 	}
 
 	// First backup should be created
-	err := CreateFileBackup(sourceFile, backupDir, repoRoot)
+	err := CreateFileBackup(sourceFile, backupDir, repoRoot, "", "main")
 	if err != nil {
 		t.Errorf("CreateFileBackup() first call error = %v", err)
 	}
 
 	// Verify backup was created
 	now := time.Now()
-	todayDir := filepath.Join(backupDir, "modified", now.Format("2006"), now.Format("01"), now.Format("02"))
+	todayDir := filepath.Join(backupDir, "modified", "workspace", "main",
+		now.Format("2006"), now.Format("01"), now.Format("02"))
 	entries, err := os.ReadDir(todayDir)
 	if err != nil {
 		t.Fatalf("failed to read backup directory: %v", err)
@@ -327,7 +328,7 @@ func TestCreateFileBackup_Deduplication(t *testing.T) {
 
 	// Second backup with identical content should be skipped
 	time.Sleep(time.Second) // Ensure different timestamp
-	err = CreateFileBackup(sourceFile, backupDir, repoRoot)
+	err = CreateFileBackup(sourceFile, backupDir, repoRoot, "", "main")
 	if err != nil {
 		t.Errorf("CreateFileBackup() second call error = %v", err)
 	}
@@ -349,7 +350,7 @@ func TestCreateFileBackup_Deduplication(t *testing.T) {
 	}
 
 	time.Sleep(time.Second) // Ensure different timestamp
-	err = CreateFileBackup(sourceFile, backupDir, repoRoot)
+	err = CreateFileBackup(sourceFile, backupDir, repoRoot, "", "main")
 	if err != nil {
 		t.Errorf("CreateFileBackup() third call error = %v", err)
 	}
@@ -377,14 +378,15 @@ func TestCreateFileBackup_FirstBackup(t *testing.T) {
 	}
 
 	// First backup should always be created (no previous backup)
-	err := CreateFileBackup(sourceFile, backupDir, repoRoot)
+	err := CreateFileBackup(sourceFile, backupDir, repoRoot, "", "main")
 	if err != nil {
 		t.Errorf("CreateFileBackup() error = %v", err)
 	}
 
 	// Verify backup was created
 	now := time.Now()
-	todayDir := filepath.Join(backupDir, "modified", now.Format("2006"), now.Format("01"), now.Format("02"))
+	todayDir := filepath.Join(backupDir, "modified", "workspace", "main",
+		now.Format("2006"), now.Format("01"), now.Format("02"))
 	entries, err := os.ReadDir(todayDir)
 	if err != nil {
 		t.Fatalf("failed to read backup directory: %v", err)
@@ -412,14 +414,15 @@ func TestCreatePatchBackup_Deduplication(t *testing.T) {
 	}
 
 	// First backup should be created
-	err := CreatePatchBackup(patchPath, backupDir)
+	err := CreatePatchBackup(patchPath, backupDir, "", "main")
 	if err != nil {
 		t.Errorf("CreatePatchBackup() first call error = %v", err)
 	}
 
 	// Verify backup was created
 	now := time.Now()
-	todayDir := filepath.Join(backupDir, "patched", now.Format("2006"), now.Format("01"), now.Format("02"))
+	todayDir := filepath.Join(backupDir, "patched", "workspace", "main",
+		now.Format("2006"), now.Format("01"), now.Format("02"))
 	entries, err := os.ReadDir(todayDir)
 	if err != nil {
 		t.Fatalf("failed to read backup directory: %v", err)
@@ -431,7 +434,7 @@ func TestCreatePatchBackup_Deduplication(t *testing.T) {
 
 	// Second backup with identical content should be skipped
 	time.Sleep(time.Second)
-	err = CreatePatchBackup(patchPath, backupDir)
+	err = CreatePatchBackup(patchPath, backupDir, "", "main")
 	if err != nil {
 		t.Errorf("CreatePatchBackup() second call error = %v", err)
 	}
@@ -453,7 +456,7 @@ func TestCreatePatchBackup_Deduplication(t *testing.T) {
 	}
 
 	time.Sleep(time.Second)
-	err = CreatePatchBackup(patchPath, backupDir)
+	err = CreatePatchBackup(patchPath, backupDir, "", "main")
 	if err != nil {
 		t.Errorf("CreatePatchBackup() third call error = %v", err)
 	}
@@ -476,7 +479,7 @@ func TestCreatePatchBackup_NonexistentFile(t *testing.T) {
 	patchPath := filepath.Join(tmpDir, "nonexistent.patch")
 
 	// Should not error when patch doesn't exist
-	err := CreatePatchBackup(patchPath, backupDir)
+	err := CreatePatchBackup(patchPath, backupDir, "", "main")
 	if err != nil {
 		t.Errorf("CreatePatchBackup() on nonexistent file error = %v, want nil", err)
 	}
@@ -490,7 +493,7 @@ func TestCreateFileBackup_NonexistentFile(t *testing.T) {
 	filePath := filepath.Join(tmpDir, "nonexistent.txt")
 
 	// Should not error when file doesn't exist
-	err := CreateFileBackup(filePath, backupDir, repoRoot)
+	err := CreateFileBackup(filePath, backupDir, repoRoot, "", "main")
 	if err != nil {
 		t.Errorf("CreateFileBackup() on nonexistent file error = %v, want nil", err)
 	}
@@ -513,17 +516,83 @@ func TestCreateFileBackup_NestedPath(t *testing.T) {
 	}
 
 	// Create backup
-	err := CreateFileBackup(sourceFile, backupDir, repoRoot)
+	err := CreateFileBackup(sourceFile, backupDir, repoRoot, "", "main")
 	if err != nil {
 		t.Errorf("CreateFileBackup() error = %v", err)
 	}
 
 	// Verify nested structure is preserved in backup
 	now := time.Now()
-	todayDir := filepath.Join(backupDir, "modified", now.Format("2006"), now.Format("01"), now.Format("02"))
+	todayDir := filepath.Join(backupDir, "modified", "workspace", "main",
+		now.Format("2006"), now.Format("01"), now.Format("02"))
 	nestedDir := filepath.Join(todayDir, "src", "pkg")
 
 	if _, err := os.Stat(nestedDir); os.IsNotExist(err) {
 		t.Errorf("nested directory structure not preserved in backup")
+	}
+}
+
+// TestCreateFileBackup_WorkspaceMultirepoSeparation verifies workspace and multirepo backup separation
+func TestCreateFileBackup_WorkspaceMultirepoSeparation(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backup")
+	repoRoot := tmpDir
+
+	sourceFile := filepath.Join(repoRoot, "test.txt")
+	if err := os.WriteFile(sourceFile, []byte("content"), 0644); err != nil {
+		t.Fatalf("failed to create source file: %v", err)
+	}
+
+	// Root backup
+	err := CreateFileBackup(sourceFile, backupDir, repoRoot, "", "main")
+	if err != nil {
+		t.Errorf("CreateFileBackup() root backup error = %v", err)
+	}
+
+	// Workspace backup
+	err = CreateFileBackup(sourceFile, backupDir, repoRoot, "apps/api.log", "main")
+	if err != nil {
+		t.Errorf("CreateFileBackup() workspace backup error = %v", err)
+	}
+
+	// Verify separate directories
+	now := time.Now()
+	rootBackup := filepath.Join(backupDir, "modified", "workspace", "main",
+		now.Format("2006"), now.Format("01"), now.Format("02"))
+	multirepoBackup := filepath.Join(backupDir, "modified", "multirepo", "apps/api.log", "main",
+		now.Format("2006"), now.Format("01"), now.Format("02"))
+
+	if _, err := os.Stat(rootBackup); os.IsNotExist(err) {
+		t.Error("root backup not found")
+	}
+	if _, err := os.Stat(multirepoBackup); os.IsNotExist(err) {
+		t.Error("workspace backup not found")
+	}
+}
+
+// TestCreateFileBackup_BranchPathWithSlash verifies branch paths with slashes
+func TestCreateFileBackup_BranchPathWithSlash(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backup")
+	repoRoot := tmpDir
+
+	sourceFile := filepath.Join(repoRoot, "test.txt")
+	if err := os.WriteFile(sourceFile, []byte("content"), 0644); err != nil {
+		t.Fatalf("failed to create source file: %v", err)
+	}
+
+	// Branch with slash: feature/auth
+	err := CreateFileBackup(sourceFile, backupDir, repoRoot, "apps/api.log", "feature/auth")
+	if err != nil {
+		t.Errorf("CreateFileBackup() error = %v", err)
+	}
+
+	// Verify natural subdirectory structure
+	now := time.Now()
+	backupPath := filepath.Join(backupDir, "modified", "multirepo", "apps/api.log", "feature", "auth",
+		now.Format("2006"), now.Format("01"), now.Format("02"))
+
+	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
+		t.Errorf("backup with branch slash not found at %s", backupPath)
 	}
 }

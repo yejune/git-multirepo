@@ -157,6 +157,13 @@ func handleKeepFiles(wsPath, branch string, keepFiles []string, repoRoot string,
 
 // handleKeepFilesWork contains the actual work logic (extracted for transaction)
 func handleKeepFilesWork(wsPath, branch string, keepFiles []string, repoRoot string, workspacePath string) error {
+	// Get current branch for this workspace
+	currentBranch, branchErr := git.GetCurrentBranch(wsPath)
+	if branchErr != nil {
+		currentBranch = "HEAD"
+		fmt.Printf("  Warning: failed to get branch, using HEAD: %v\n", branchErr)
+	}
+
 	for _, file := range keepFiles {
 		// Check if file has remote changes
 		hasChanges, err := git.HasRemoteChanges(wsPath, file, branch)
@@ -192,7 +199,7 @@ func handleKeepFilesWork(wsPath, branch string, keepFiles []string, repoRoot str
 			case 0: // Update origin and reapply patch (recommended)
 				// Backup original file
 				backupDir := filepath.Join(repoRoot, ".multirepos", "backup")
-				if err := backup.CreateFileBackup(filepath.Join(wsPath, file), backupDir, repoRoot); err != nil {
+				if err := backup.CreateFileBackup(filepath.Join(wsPath, file), backupDir, repoRoot, workspacePath, currentBranch); err != nil {
 					return fmt.Errorf("backup failed for %s: %w", file, err)
 				}
 
@@ -203,7 +210,7 @@ func handleKeepFilesWork(wsPath, branch string, keepFiles []string, repoRoot str
 				}
 
 				// Backup patch file
-				if err := backup.CreatePatchBackup(patchPath, backupDir); err != nil {
+				if err := backup.CreatePatchBackup(patchPath, backupDir, workspacePath, currentBranch); err != nil {
 					fmt.Printf("  ⚠ Patch backup failed: %v\n", err)
 				}
 
